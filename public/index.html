@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Glass Todo Pro (Local)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- 1. 登录/注册窗口 (Local) -->
+    <div id="login-modal" style="position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,0.6); backdrop-filter:blur(20px); display:flex; align-items:center; justify-content:center;">
+        <div class="modal-box" style="text-align:center; max-width:350px;">
+            <h2>👋 欢迎</h2>
+            <p style="margin:15px 0; color:#666;">私有部署 Todo 系统</p>
+            <input type="text" id="login-user" class="form-input" placeholder="用户名" style="text-align:center">
+            <input type="password" id="login-pwd" class="form-input" placeholder="密码" style="text-align:center">
+            <div id="invite-field" style="display:none; border-top:1px dashed #ccc; padding-top:15px; margin-bottom:15px;">
+                <p style="font-size:0.8rem; color:var(--primary); margin-bottom:5px;">新用户注册需要管理员邀请码</p>
+                <input type="text" id="login-invite" class="form-input" placeholder="邀请码" style="text-align:center; letter-spacing: 2px;">
+            </div>
+            <button class="btn" onclick="app.login()" style="width:100%">登录 / 注册</button>
+        </div>
+    </div>
+
+    <!-- 2. 管理员面板 (Local) -->
+    <div id="admin-modal">
+        <div class="modal-box" style="max-width:500px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                <h3>🛡️ 管理员面板</h3>
+                <button class="btn-text" onclick="document.getElementById('admin-modal').style.display='none'">关闭</button>
+            </div>
+            <div style="background:#f5f5f7; padding:15px; border-radius:10px; margin-bottom:20px; text-align:center;">
+                <div style="font-size:0.8rem; color:#666;">今日邀请码</div>
+                <div id="admin-invite-code" style="font-size:2rem; font-weight:bold; color:var(--primary); letter-spacing:5px; margin:10px 0;">LOADING</div>
+                <button class="btn btn-sm" onclick="app.adminRefreshCode()">🔄 刷新</button>
+            </div>
+            <h4>用户管理</h4>
+            <div id="admin-user-list"></div>
+        </div>
+    </div>
+
+    <!-- 3. 导出/报表 Modal -->
+    <div id="export-modal-overlay">
+        <div class="modal-box" style="width:500px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3>📤 导出报告</h3>
+                <button class="btn-text" onclick="document.getElementById('export-modal-overlay').style.display='none'">✕</button>
+            </div>
+            <div style="display:flex; gap:10px; margin-bottom:20px; background:rgba(0,0,0,0.03); padding:5px; border-radius:10px;">
+                <button class="btn btn-sm" id="btn-export-daily" onclick="app.setExportType('daily')" style="flex:1;">日报</button>
+                <button class="btn btn-sm btn-secondary" id="btn-export-weekly" onclick="app.setExportType('weekly')" style="flex:1;">周报</button>
+            </div>
+            <textarea id="export-template" class="form-input" style="height:100px; font-family:monospace; font-size:0.85rem;" oninput="app.handleTemplateChange(this.value)"></textarea>
+            <div id="export-preview" style="background:#f5f5f7; padding:12px; border-radius:8px; font-size:0.85rem; white-space:pre-wrap; max-height:150px; overflow-y:auto; border:1px solid #e0e0e0; color:#333;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn" onclick="app.copyReport()">📋 复制内容</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <!-- 4. 侧边栏 (Desktop) -->
+    <nav id="sidebar">
+        <h2 style="color:white; margin-bottom:20px; padding:0 10px;">Glass Todo</h2>
+        <div class="nav-section">视图</div>
+        <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span>📝</span> 任务列表</div>
+        <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span>📅</span> 日历视图</div>
+        <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span>💠</span> 四象限</div>
+        <div class="nav-item" data-view="inbox" onclick="app.switchView('inbox')"><span>📥</span> 待办箱</div>
+        
+        <div class="nav-section">标签筛选</div>
+        <div id="tag-filter-list"></div>
+        
+        <div style="flex:1"></div>
+        <div class="nav-item" data-view="stats" onclick="app.switchView('stats')"><span>📊</span> 数据统计</div>
+        <div class="nav-item" data-view="settings" onclick="app.switchView('settings')"><span>⚙️</span> 设置</div>
+        <div class="nav-item" data-view="recycle" onclick="app.switchView('recycle')"><span>🗑️</span> 回收站</div>
+    </nav>
+
+    <!-- 5. 底部 Tab (Mobile) -->
+    <nav id="mobile-tabbar">
+        <div class="tab-item active" data-view="tasks" onclick="app.switchView('tasks')"><div>📝</div><div style="font-size:0.6rem">列表</div></div>
+        <div class="tab-item" data-view="calendar" onclick="app.switchView('calendar')"><div>📅</div><div style="font-size:0.6rem">日历</div></div>
+        <div class="tab-item" data-view="matrix" onclick="app.switchView('matrix')"><div>💠</div><div style="font-size:0.6rem">象限</div></div>
+        <div class="tab-item" data-view="stats" onclick="app.switchView('stats')"><div>📊</div><div style="font-size:0.6rem">统计</div></div>
+        <div class="tab-item" data-view="settings" onclick="app.switchView('settings')"><div>⚙️</div><div style="font-size:0.6rem">设置</div></div>
+        <div class="tab-item" data-view="recycle" onclick="app.switchView('recycle')"><div>🗑️</div><div style="font-size:0.6rem">回收站</div></div>
+    </nav>
+
+    <!-- 6. 主区域 -->
+    <main id="main">
+        <div class="toolbar">
+            <div class="search-bar">
+                <span>🔍</span>
+                <input type="text" class="search-input" placeholder="搜索任务..." oninput="app.handleSearch(this.value)">
+            </div>
+            
+            <!-- 日历视图切换器 (仅在 Calendar 视图显示) -->
+            <div id="calendar-controls" class="view-switcher" style="display:none; margin:0 5px;">
+                <button class="view-switch-btn" data-mode="day" onclick="app.setCalendarMode('day')">日</button>
+                <button class="view-switch-btn" data-mode="week" onclick="app.setCalendarMode('week')">周</button>
+                <button class="view-switch-btn" data-mode="month" onclick="app.setCalendarMode('month')">月</button>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center;">
+                <span id="date-display" class="desktop-only" style="font-weight:600; color:#555;">Today</span>
+                <button class="btn btn-sm" onclick="app.openModal()">+ 新建</button>
+            </div>
+        </div>
+
+        <!-- 视图: 搜索 -->
+        <div id="view-search" class="view-container">
+            <h3>🔍 搜索结果</h3>
+            <div id="search-results-list"></div>
+        </div>
+
+        <!-- 视图: 列表 -->
+        <div id="view-tasks" class="view-container active">
+            <h4 style="margin-bottom:10px">待办事项</h4>
+            <div id="list-todo"></div>
+            <h4 style="margin-bottom:10px; margin-top:20px; opacity:0.6">已完成</h4>
+            <div id="list-done"></div>
+        </div>
+
+        <!-- 视图: 待办箱（无日期任务） -->
+        <div id="view-inbox" class="view-container">
+            <h4 style="margin-bottom:10px">待办箱（无日期/时间）</h4>
+            <div id="list-inbox"></div>
+        </div>
+
+        <!-- 视图: 日历 (增强版) -->
+        <div id="view-calendar" class="view-container">
+            <!-- 修复 Problem 2: 增加 align-items: center 解决错位 -->
+            <div style="text-align:center; margin-bottom:10px; display:flex; justify-content:center; align-items:center; gap:20px;">
+                <button class="btn-text" onclick="app.changeDate(-1)">❮</button>
+                <span id="cal-date-display" style="font-weight:bold; width:120px; text-align:center;">Today</span>
+                <button class="btn-text" onclick="app.changeDate(1)">❯</button>
+            </div>
+
+            <!-- 日视图 -->
+            <div id="cal-day-view">
+                <div id="cal-allday-list" style="margin-bottom:10px;"></div>
+                <div class="timeline-wrapper" id="day-timeline" ondragover="event.preventDefault()" ondrop="app.dropOnTimeline(event)">
+                    <div class="time-ruler" id="time-ruler"></div>
+                    <div id="ghost-line" data-time=""></div>
+                </div>
+            </div>
+
+            <!-- 周视图 -->
+            <div id="cal-week-view" style="display:none; height:100%;">
+                <div class="week-grid" id="week-grid"></div>
+            </div>
+
+            <!-- 月视图 -->
+            <div id="cal-month-view" style="display:none;">
+                <div style="display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:5px;">
+                    <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                </div>
+                <div class="month-grid" id="month-grid"></div>
+            </div>
+        </div>
+
+        <!-- 视图: 四象限 -->
+        <div id="view-matrix" class="view-container">
+            <div class="matrix-grid">
+                <div class="quadrant" id="q1" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q1')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--danger)">🔴 重要紧急 (P1)</div>
+                    <div class="q-list"></div>
+                </div>
+                <div class="quadrant" id="q2" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q2')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--primary)">🔵 重要不急 (P2)</div>
+                    <div class="q-list"></div>
+                </div>
+                <div class="quadrant" id="q3" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q3')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--warning)">🟠 紧急不重 (P3)</div>
+                    <div class="q-list"></div>
+                </div>
+                <div class="quadrant" id="q4" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q4')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--success)">🟢 不重不急 (P4)</div>
+                    <div class="q-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 视图: 统计 -->
+        <div id="view-stats" class="view-container">
+            <div class="stats-card">
+                <h3>📊 效率概览</h3>
+                <div style="font-size:3rem; font-weight:bold; color:var(--primary); text-align:center; margin:20px 0;" id="completion-rate">0%</div>
+                <p style="text-align:center; color:#666;">本周完成率</p>
+            </div>
+        </div>
+
+        <!-- 视图: 回收站 -->
+        <div id="view-recycle" class="view-container">
+            <h4 style="margin-bottom:10px">回收站（7天自动清理）</h4>
+            <div id="recycle-list"></div>
+        </div>
+
+        <!-- 视图: 设置 -->
+        <div id="view-settings" class="view-container">
+            <div class="stats-card">
+                <h3>👤 个人中心</h3>
+                <p>当前用户: <span id="current-user" style="font-weight:bold">--</span></p>
+                <button id="admin-btn" class="btn" style="width:100%; margin-top:10px; display:none; background:#333;" onclick="app.openAdminPanel()">🛡️ 管理员面板</button>
+                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                <div class="form-group">
+                    <label class="form-label">原密码</label>
+                    <input type="password" id="pwd-old" class="form-input" placeholder="请输入原密码">
+                </div>
+                    <div class="form-group">
+                    <label class="form-label">新密码</label>
+                    <input type="password" id="pwd-new" class="form-input" placeholder="请输入新密码">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">确认新密码</label>
+                    <input type="password" id="pwd-confirm" class="form-input" placeholder="请再次输入新密码">
+                </div>
+                <button class="btn" style="width:100%; margin-bottom:10px;" onclick="app.changePassword()">修改密码</button>
+                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>
+                <button class="btn btn-secondary" onclick="app.downloadJSON()" style="width:100%; margin-bottom:10px;">💾 备份数据 (JSON)</button>
+                <label class="btn btn-secondary" style="width:100%; margin-bottom:10px; cursor:pointer; text-align:center;">
+                    📥 导入数据 (JSON)
+                    <input type="file" accept="application/json" style="display:none" onchange="this.files[0] && app.importJSON(this.files[0])">
+                </label>
+                <button class="btn btn-danger" style="width:100%;" onclick="app.logout()">退出登录</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 7. 新建任务 Modal (增强版) -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 id="modal-title">📝 任务详情</h3>
+                <button class="btn-text" onclick="app.closeModal()">✕</button>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">任务名称</label>
+                <input type="text" id="task-title" class="form-input" placeholder="输入任务名称...">
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <div style="flex:2">
+                    <label class="form-label">日期</label>
+                    <input type="date" id="task-date" class="form-input">
+                </div>
+                <div style="flex:1">
+                    <label class="form-label">开始</label>
+                    <input type="time" id="task-start" class="form-input">
+                </div>
+                <div style="flex:1">
+                    <label class="form-label">结束</label>
+                    <input type="time" id="task-end" class="form-input">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">优先级 / 象限</label>
+                <select id="task-quadrant" class="form-input">
+                    <option value="q1">🔴 重要紧急 (P1)</option>
+                    <option value="q2" selected>🔵 重要不急 (P2)</option>
+                    <option value="q3">🟠 紧急不重 (P3)</option>
+                    <option value="q4">🟢 不重不急 (P4)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">标签 (逗号分隔)</label>
+                <input type="text" id="task-tags" class="form-input" placeholder="工作, 会议...">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">子任务</label>
+                <div id="subtask-container" style="margin-bottom:10px;"></div>
+                <div style="color:var(--primary); cursor:pointer; font-size:0.85rem;" onclick="app.addSubtaskInput()">+ 添加子任务</div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn btn-danger" style="margin-right:auto;" onclick="app.deleteCurrentTask()">删除</button>
+                <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
+                <button class="btn" onclick="app.saveTask()">保存任务</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
