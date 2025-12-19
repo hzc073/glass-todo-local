@@ -177,7 +177,6 @@ body {
 .stats-card { background: var(--glass-card); border-radius: 16px; padding: 20px; margin-bottom: 20px; }
 .settings-toggle { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
 .mobile-only { display: none; }
-.mobile-section { background: rgba(255,255,255,0.4); border-radius: 12px; padding: 12px; margin-top: 10px; }
 
 /* Modal */
 #modal-overlay, #admin-modal, #export-modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; }
