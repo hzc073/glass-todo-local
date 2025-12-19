@@ -5,4 +5,4 @@ compatibility_date = "2024-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "glass-todo"
-database_id = "填写数据库ID"
+database_id = "c7f40ddb-db4b-4091-8128-8bf659a27577"
