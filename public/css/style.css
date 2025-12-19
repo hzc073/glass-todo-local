@@ -47,6 +47,12 @@ body {
 .view-switch-btn { padding: 4px 12px; border-radius: 6px; border: none; background: transparent; cursor: pointer; font-size: 0.85rem; font-weight: 500; color: #555; }
 .view-switch-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
+.cal-date-extra { display: flex; justify-content: center; gap: 10px; font-size: 0.75rem; color: #666; margin-bottom: 10px; flex-wrap: wrap; }
+.lunar-text { font-size: 0.7rem; color: #888; }
+.holiday-tag { font-size: 0.7rem; padding: 1px 5px; border-radius: 6px; background: rgba(0,0,0,0.06); color: #333; display: inline-block; }
+.holiday-tag.off { background: rgba(52,199,89,0.18); color: var(--success); }
+.holiday-tag.work { background: rgba(255,59,48,0.18); color: var(--danger); }
+
 .view-container { flex: 1; overflow-y: auto; padding: 20px; display: none; }
 .view-container.active { display: block; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from{opacity:0; transform:translateY(5px)} to{opacity:1; transform:translateY(0)} }
@@ -152,6 +158,9 @@ body {
 .month-cell { background: rgba(255,255,255,0.8); min-height: 100px; padding: 5px; cursor: pointer; transition: 0.2s; }
 .month-cell:hover { background: white; }
 .month-cell.today { background: rgba(0,122,255,0.05); }
+.month-cell.holiday-off { background: rgba(52,199,89,0.06); }
+.month-cell.holiday-work { background: rgba(255,59,48,0.06); }
+.month-cell-header { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .month-task-pill { font-size: 0.7rem; padding: 2px 4px; border-radius: 3px; background: var(--primary); color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; border: 1px solid rgba(0,0,0,0.05); }
 .month-task-pill .month-tag { color: rgba(255,255,255,0.9); margin-left: 4px; font-weight: 600; }
 
@@ -162,6 +171,7 @@ body {
 
 /* 统计卡片 */
 .stats-card { background: var(--glass-card); border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+.settings-toggle { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
 
 /* Modal */
 #modal-overlay, #admin-modal, #export-modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; }
@@ -172,8 +182,11 @@ body {
 
 /* Toast */
 #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; pointer-events: none; }
-.toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-bottom: 10px; backdrop-filter: blur(10px); opacity: 0; transform: translateY(-20px); transition: 0.4s; }
+.toast { background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; margin-bottom: 10px; backdrop-filter: blur(10px); opacity: 0; transform: translateY(-20px); transition: 0.4s; pointer-events: auto; }
 .toast.show { opacity: 1; transform: translateY(0); }
+.toast.undo { display: flex; align-items: center; gap: 10px; }
+.toast.undo button { background: white; color: #333; border: none; border-radius: 12px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; }
+.toast.undo button:hover { opacity: 0.9; }
 
 /* 多选模式样式 (moved from app.js) */
 .task-card.selection-mode { transition: transform 0.2s; }

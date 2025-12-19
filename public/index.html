@@ -106,6 +106,7 @@
 
             <div style="display:flex; gap:10px; align-items:center;">
                 <span id="date-display" class="desktop-only" style="font-weight:600; color:#555;">Today</span>
+                <span id="lunar-display" class="desktop-only" style="font-size:0.75rem; color:#888;"></span>
                 <button class="btn btn-sm" onclick="app.openModal()">+ 新建</button>
             </div>
         </div>
@@ -137,6 +138,10 @@
                 <button class="btn-text" onclick="app.changeDate(-1)">❮</button>
                 <span id="cal-date-display" style="font-weight:bold; width:120px; text-align:center;">Today</span>
                 <button class="btn-text" onclick="app.changeDate(1)">❯</button>
+            </div>
+            <div class="cal-date-extra">
+                <span id="cal-lunar-display"></span>
+                <span id="cal-holiday-display"></span>
             </div>
 
             <!-- 日视图 -->
@@ -220,6 +225,20 @@
                 </div>
                 <button class="btn" style="width:100%; margin-bottom:10px;" onclick="app.changePassword()">修改密码</button>
                 <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                <h4 style="margin-bottom:10px;">视图开关</h4>
+                <div class="settings-toggle" data-key="calendar">
+                    <span>日历视图</span>
+                    <div class="toggle-switch" id="switch-view-calendar"></div>
+                </div>
+                <div class="settings-toggle" data-key="matrix">
+                    <span>四象限</span>
+                    <div class="toggle-switch" id="switch-view-matrix"></div>
+                </div>
+                <div class="settings-toggle" data-key="inbox">
+                    <span>待办箱</span>
+                    <div class="toggle-switch" id="switch-view-inbox"></div>
+                </div>
+                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
                 <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>
                 <button class="btn btn-secondary" onclick="app.downloadJSON()" style="width:100%; margin-bottom:10px;">💾 备份数据 (JSON)</button>
                 <label class="btn btn-secondary" style="width:100%; margin-bottom:10px; cursor:pointer; text-align:center;">
@@ -256,6 +275,45 @@
                 <div style="flex:1">
                     <label class="form-label">结束</label>
                     <input type="time" id="task-end" class="form-input">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">重复</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <input type="checkbox" id="task-repeat-enabled" style="width:auto; height:auto;" onchange="app.toggleRepeatOptions()">
+                    <span style="font-size:0.85rem; color:#666;">批量创建重复事件</span>
+                </div>
+                <div id="repeat-options" style="display:none; margin-top:10px;">
+                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+                        <label class="form-label" style="margin:0;">频率</label>
+                        <select id="repeat-frequency" class="form-input" style="margin:0; flex:1;" onchange="app.updateRepeatOptionVisibility()">
+                            <option value="daily">每天</option>
+                            <option value="weekly">每周</option>
+                            <option value="monthly">每月</option>
+                            <option value="yearly">每年</option>
+                        </select>
+                        <input type="number" id="repeat-count" class="form-input" style="margin:0; width:90px;" min="1" max="365" value="10">
+                    </div>
+                    <div id="repeat-weekly-options" style="display:none; margin-bottom:10px;">
+                        <div style="font-size:0.8rem; color:#666; margin-bottom:6px;">每周星期几</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <label><input type="checkbox" class="repeat-weekday" value="1"> 一</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="2"> 二</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="3"> 三</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="4"> 四</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="5"> 五</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="6"> 六</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="0"> 日</label>
+                        </div>
+                    </div>
+                    <div id="repeat-monthly-options" style="display:none;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label class="form-label" style="margin:0;">每月第</label>
+                            <input type="number" id="repeat-monthly-day" class="form-input" style="margin:0; width:90px;" min="1" max="31" value="1">
+                            <span style="font-size:0.85rem; color:#666;">天</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 

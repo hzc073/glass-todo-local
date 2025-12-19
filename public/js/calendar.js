@@ -2,7 +2,7 @@ export default class CalendarView {
     constructor(app) {
         this.app = app; // 持有主程序引用以访问数据
         this.mode = 'day'; // day, week, month
-        this.settings = JSON.parse(localStorage.getItem('glass_calendar_settings')) || { showTime: true, showTags: true };
+        this.settings = JSON.parse(localStorage.getItem('glass_calendar_settings')) || { showTime: true, showTags: true, showLunar: true, showHoliday: true };
         this.resizing = null;
 
         // 绑定拖拽事件监听
@@ -42,6 +42,14 @@ export default class CalendarView {
                     <div class="cal-setting-item" data-key="showTags">
                         <span>显示标签</span>
                         <div class="toggle-switch ${this.settings.showTags?'active':''}" id="switch-showTags"></div>
+                    </div>
+                    <div class="cal-setting-item" data-key="showLunar">
+                        <span>显示农历</span>
+                        <div class="toggle-switch ${this.settings.showLunar?'active':''}" id="switch-showLunar"></div>
+                    </div>
+                    <div class="cal-setting-item" data-key="showHoliday">
+                        <span>显示节假日</span>
+                        <div class="toggle-switch ${this.settings.showHoliday?'active':''}" id="switch-showHoliday"></div>
                     </div>
                 </div>
             `;
@@ -105,6 +113,20 @@ export default class CalendarView {
             el.innerText = dStr;
             el.style.cursor = 'pointer';
             el.onclick = () => this.openDatePicker(dStr);
+        }
+        if (this.settings.showHoliday) this.app.ensureHolidayYear(this.app.currentDate.getFullYear());
+        const lunarText = this.settings.showLunar ? this.app.getLunarText(this.app.currentDate) : '';
+        const lunarEl = document.getElementById('cal-lunar-display');
+        if (lunarEl) lunarEl.innerText = lunarText ? `农历 ${lunarText}` : '';
+        const holiday = this.settings.showHoliday ? this.app.getHolidayForDate(dStr) : null;
+        const holidayEl = document.getElementById('cal-holiday-display');
+        if (holidayEl) {
+            if (holiday) {
+                const flag = holiday.isOffDay ? '休' : '班';
+                holidayEl.innerHTML = `<span class="holiday-tag ${holiday.isOffDay ? 'off' : 'work'}">${holiday.name}·${flag}</span>`;
+            } else {
+                holidayEl.innerText = '';
+            }
         }
 
         const tasks = this.app.getFilteredData();
@@ -177,6 +199,9 @@ export default class CalendarView {
             const d = new Date(start); d.setDate(d.getDate() + i);
             const dStr = this.app.formatDate(d);
             const isToday = dStr === this.app.formatDate(new Date());
+            const lunarText = this.settings.showLunar ? this.app.getLunarText(d) : '';
+            const holiday = this.settings.showHoliday ? this.app.getHolidayForDate(dStr) : null;
+            const holidayHtml = holiday ? `<div class="holiday-tag ${holiday.isOffDay ? 'off' : 'work'}">${holiday.name}${holiday.isOffDay ? '' : '·班'}</div>` : '';
             
             const col = document.createElement('div');
             col.className = 'week-col';
@@ -188,6 +213,8 @@ export default class CalendarView {
                 <div class="week-header" style="${isToday?'background:rgba(0,122,255,0.1);color:var(--primary)':''}">
                     <div>${['日','一','二','三','四','五','六'][i]}</div>
                     <div style="font-weight:bold">${d.getDate()}</div>
+                    ${lunarText ? `<div class="lunar-text">${lunarText}</div>` : ''}
+                    ${holidayHtml}
                 </div>
                 <div class="week-body" onclick="app.openModal(null, '${dStr}')">
                     ${tasks.filter(t=>t.date===dStr).map(t => {
@@ -215,13 +242,25 @@ export default class CalendarView {
             const dStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
             const cell = document.createElement('div');
             cell.className = 'month-cell' + (dStr === this.app.formatDate(new Date()) ? ' today' : '');
+            const holiday = this.settings.showHoliday ? this.app.getHolidayForDate(dStr) : null;
+            const lunarText = this.settings.showLunar ? this.app.getLunarText(new Date(y, m, d)) : '';
+            if (holiday) {
+                cell.classList.add(holiday.isOffDay ? 'holiday-off' : 'holiday-work');
+            }
+            const holidayHtml = holiday ? `<span class="holiday-tag ${holiday.isOffDay ? 'off' : 'work'}">${holiday.name}${holiday.isOffDay ? '' : '·班'}</span>` : '';
             
             cell.setAttribute('ondragover', 'app.allowDrop(event)');
             cell.setAttribute('ondrop', `app.dropOnDate(event, '${dStr}')`);
             cell.setAttribute('ondragleave', 'app.leaveDrop(event)');
             
             cell.onclick = () => { this.app.currentDate = new Date(y,m,d); this.setMode('day'); };
-            cell.innerHTML = `<div style="font-weight:bold; font-size:0.8rem;">${d}</div>`;
+            cell.innerHTML = `
+                <div class="month-cell-header">
+                    <div style="font-weight:bold; font-size:0.8rem;">${d}</div>
+                    ${holidayHtml}
+                </div>
+                ${lunarText ? `<div class="lunar-text">${lunarText}</div>` : ''}
+            `;
             
             tasks.filter(t=>t.date===dStr).slice(0,4).forEach(t => {
                 const showTags = this.settings.showTags && t.tags && t.tags.length;
@@ -279,6 +318,7 @@ export default class CalendarView {
         document.querySelector('.dragging')?.classList.remove('dragging');
         
         if (t) {
+            this.app.queueUndo('已调整时间');
             const rect = ev.currentTarget.getBoundingClientRect();
             const scrollTop = ev.currentTarget.scrollTop || 0;
             const minutes = Math.floor(ev.clientY - rect.top + scrollTop);
@@ -362,6 +402,7 @@ export default class CalendarView {
         if(!this.resizing) return;
         const t = this.app.data.find(i => i.id === this.resizing.id);
         if(t) {
+            this.app.queueUndo('已调整时间');
             const startMin = this.resizing.updatedStart ?? this.resizing.startMin;
             const endMin = this.resizing.updatedEnd ?? this.resizing.endMin;
             t.start = this.app.minutesToTime(startMin);

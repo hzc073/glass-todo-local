@@ -2,6 +2,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
 const db = require('./server/db');
 const { authenticate, requireAdmin, getOrInitInviteCode, generateInviteCode } = require('./server/auth');
 
@@ -11,6 +13,9 @@ const PORT = 3000;
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+const holidaysDir = path.join(__dirname, 'public', 'holidays');
+if (!fs.existsSync(holidaysDir)) fs.mkdirSync(holidaysDir, { recursive: true });
 
 // --- API 路由 ---
 
@@ -91,7 +96,39 @@ app.post('/api/change-pwd', authenticate, (req, res) => {
     });
 });
 
-// 5. CLI 重置命令
+// 5. 节假日缓存
+app.get('/api/holidays/:year', authenticate, (req, res) => {
+    const year = String(req.params.year || '').trim();
+    if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: 'Invalid year' });
+    const filePath = path.join(holidaysDir, `${year}.json`);
+    if (fs.existsSync(filePath)) {
+        return res.sendFile(filePath);
+    }
+
+    const url = `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`;
+    https.get(url, (resp) => {
+        if (resp.statusCode !== 200) {
+            resp.resume();
+            return res.status(404).json({ error: 'Holiday data not found' });
+        }
+        let data = '';
+        resp.setEncoding('utf8');
+        resp.on('data', (chunk) => data += chunk);
+        resp.on('end', () => {
+            try {
+                JSON.parse(data);
+            } catch (e) {
+                return res.status(500).json({ error: 'Invalid holiday data' });
+            }
+            fs.writeFile(filePath, data, 'utf8', (err) => {
+                if (err) return res.status(500).json({ error: 'Write failed' });
+                res.type('json').send(data);
+            });
+        });
+    }).on('error', () => res.status(500).json({ error: 'Fetch failed' }));
+});
+
+// 6. CLI 重置命令
 if (process.argv[2] === '--reset-admin') {
     const user = process.argv[3];
     const pass = process.argv[4];

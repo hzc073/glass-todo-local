@@ -19,6 +19,16 @@ class TodoApp {
         this.isSelectionMode = false;
         this.selectedTaskIds = new Set();
         this.longPressTimer = null;
+        this.undoState = null;
+        this.undoTimer = null;
+
+        this.holidaysByYear = {};
+        this.holidayLoading = {};
+        this.viewSettings = JSON.parse(localStorage.getItem('glass_view_settings')) || {
+            calendar: true,
+            matrix: true,
+            inbox: true
+        };
 
         // 模块初始化
         this.admin = new AdminPanel();
@@ -45,6 +55,9 @@ class TodoApp {
         // 样式已移至 css/style.css，这里只保留基本的兼容性处理或空实现
         this.calendar.initControls(); // 委托 Calendar 初始化控件
         this.calendar.renderRuler();  // 委托 Calendar 渲染尺子
+        this.applyViewSettings();
+        this.initViewSettingsControls();
+        if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
         
         setInterval(() => { if (!document.hidden) this.loadData(); }, 30000);
         document.addEventListener("visibilitychange", () => {
@@ -145,6 +158,7 @@ class TodoApp {
 
     // --- 视图切换 ---
     switchView(v) {
+        if (!this.isViewEnabled(v)) v = 'tasks';
         this.view = v;
         if(v !== 'tasks') this.exitSelectionMode();
 
@@ -159,6 +173,46 @@ class TodoApp {
         document.getElementById('calendar-controls').style.display = v === 'calendar' ? 'flex' : 'none';
         
         this.render();
+    }
+
+    isViewEnabled(v) {
+        if (v === 'calendar') return !!this.viewSettings.calendar;
+        if (v === 'matrix') return !!this.viewSettings.matrix;
+        if (v === 'inbox') return !!this.viewSettings.inbox;
+        return true;
+    }
+    applyViewSettings() {
+        const map = { calendar: this.viewSettings.calendar, matrix: this.viewSettings.matrix, inbox: this.viewSettings.inbox };
+        Object.keys(map).forEach(key => {
+            const visible = !!map[key];
+            document.querySelectorAll(`#sidebar .nav-item[data-view="${key}"], #mobile-tabbar .tab-item[data-view="${key}"]`)
+                .forEach(el => { el.style.display = visible ? '' : 'none'; });
+        });
+        if (!this.isViewEnabled(this.view)) this.switchView('tasks');
+    }
+    initViewSettingsControls() {
+        document.querySelectorAll('.settings-toggle').forEach(item => {
+            item.onclick = () => this.toggleViewSetting(item.dataset.key);
+        });
+        this.syncViewSettingUI();
+    }
+    toggleViewSetting(key) {
+        if (!['calendar', 'matrix', 'inbox'].includes(key)) return;
+        this.viewSettings[key] = !this.viewSettings[key];
+        localStorage.setItem('glass_view_settings', JSON.stringify(this.viewSettings));
+        this.syncViewSettingUI();
+        this.applyViewSettings();
+    }
+    syncViewSettingUI() {
+        const mapping = {
+            calendar: 'switch-view-calendar',
+            matrix: 'switch-view-matrix',
+            inbox: 'switch-view-inbox'
+        };
+        Object.entries(mapping).forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('active', !!this.viewSettings[key]);
+        });
     }
 
     // 代理日历方法，供 HTML onclick 调用
@@ -176,6 +230,7 @@ class TodoApp {
         const t = this.data.find(i => i.id === id);
         document.querySelector('.dragging')?.classList.remove('dragging');
         if (t && !t.deletedAt && t.date !== dateStr) {
+            this.queueUndo('已移动日期');
             t.date = dateStr;
             t.inbox = false;
             this.saveData();
@@ -313,6 +368,72 @@ class TodoApp {
         `;
     }
 
+    toggleRepeatOptions() {
+        const enabled = document.getElementById('task-repeat-enabled')?.checked;
+        const box = document.getElementById('repeat-options');
+        if (box) box.style.display = enabled ? 'block' : 'none';
+        if (enabled) this.updateRepeatOptionVisibility();
+    }
+    updateRepeatOptionVisibility() {
+        const freq = document.getElementById('repeat-frequency')?.value || 'daily';
+        const weekly = document.getElementById('repeat-weekly-options');
+        const monthly = document.getElementById('repeat-monthly-options');
+        if (weekly) weekly.style.display = freq === 'weekly' ? 'block' : 'none';
+        if (monthly) monthly.style.display = freq === 'monthly' ? 'block' : 'none';
+    }
+    buildRepeatDates(startDate, options) {
+        const { frequency, count, weekdays, monthlyDay } = options;
+        const dates = [];
+        const start = new Date(startDate);
+        if (Number.isNaN(start.getTime())) return dates;
+        const targetCount = Math.max(1, Math.min(365, count || 1));
+
+        if (frequency === 'daily') {
+            for (let i = 0; i < targetCount; i++) {
+                const d = new Date(start);
+                d.setDate(d.getDate() + i);
+                dates.push(d);
+            }
+            return dates;
+        }
+
+        if (frequency === 'weekly') {
+            const weekdaySet = new Set((weekdays || []).map(String));
+            if (weekdaySet.size === 0) weekdaySet.add(String(start.getDay()));
+            let cursor = new Date(start);
+            while (dates.length < targetCount) {
+                if (weekdaySet.has(String(cursor.getDay()))) dates.push(new Date(cursor));
+                cursor.setDate(cursor.getDate() + 1);
+            }
+            return dates;
+        }
+
+        if (frequency === 'monthly') {
+            const day = Math.min(31, Math.max(1, monthlyDay || start.getDate()));
+            let i = 0;
+            let guard = 0;
+            while (dates.length < targetCount && guard < targetCount * 4) {
+                const d = new Date(start.getFullYear(), start.getMonth() + i, day);
+                if (d.getDate() === day) dates.push(d);
+                i += 1;
+                guard += 1;
+            }
+            return dates;
+        }
+
+        if (frequency === 'yearly') {
+            const month = start.getMonth();
+            const day = start.getDate();
+            for (let i = 0; i < targetCount; i++) {
+                const d = new Date(start.getFullYear() + i, month, day);
+                dates.push(d);
+            }
+            return dates;
+        }
+
+        return [start];
+    }
+
     // --- 任务操作 ---
     openModal(taskId = null, dateStr = null) {
         if (this.isSelectionMode) { if (taskId) this.toggleSelection(taskId); return; }
@@ -337,6 +458,21 @@ class TodoApp {
             document.getElementById('task-start').value = '';
             document.getElementById('task-end').value = '';
         }
+
+        const repeatBox = document.getElementById('task-repeat-enabled');
+        const repeatOptions = document.getElementById('repeat-options');
+        if (repeatBox) {
+            repeatBox.checked = false;
+            repeatBox.disabled = !!taskId;
+        }
+        if (repeatOptions) repeatOptions.style.display = 'none';
+        if (!taskId) {
+            const baseDate = document.getElementById('task-date').value;
+            const baseDay = baseDate ? parseInt(baseDate.split('-')[2], 10) : this.currentDate.getDate();
+            const monthlyDay = document.getElementById('repeat-monthly-day');
+            if (monthlyDay) monthlyDay.value = baseDay || 1;
+        }
+        this.updateRepeatOptionVisibility();
         
         document.getElementById('subtask-container').innerHTML = '';
         const subs = t ? (t.subtasks || []) : [];
@@ -350,9 +486,14 @@ class TodoApp {
     saveTask() {
         const title = document.getElementById('task-title').value;
         if(!title) return alert("标题不能为空");
+        const isEdit = !!this.currentTaskId;
         
         const inboxBox = document.getElementById('task-inbox');
         const isInbox = inboxBox ? inboxBox.checked : false;
+        const repeatEnabled = !isEdit && !isInbox && (document.getElementById('task-repeat-enabled')?.checked);
+        if (repeatEnabled && !document.getElementById('task-date').value) {
+            return alert("重复任务需要设置日期");
+        }
         const subtasks = [];
         document.querySelectorAll('.subtask-item').forEach(item => {
             const input = item.querySelector('input[type="text"]');
@@ -381,10 +522,29 @@ class TodoApp {
         };
 
         if (this.currentTaskId) {
+            this.queueUndo('已更新任务');
             const idx = this.data.findIndex(t => t.id === this.currentTaskId);
             if (idx > -1) this.data[idx] = { ...this.data[idx], ...newItem };
         } else {
-            this.data.push(newItem);
+            this.queueUndo(repeatEnabled ? '已创建重复任务' : '已创建任务');
+            if (repeatEnabled) {
+                const frequency = document.getElementById('repeat-frequency')?.value || 'daily';
+                const count = parseInt(document.getElementById('repeat-count')?.value, 10) || 1;
+                const weekdays = Array.from(document.querySelectorAll('.repeat-weekday:checked')).map(el => el.value);
+                const monthlyDay = parseInt(document.getElementById('repeat-monthly-day')?.value, 10) || new Date(newItem.date).getDate();
+                const dates = this.buildRepeatDates(newItem.date, { frequency, count, weekdays, monthlyDay });
+                const baseId = Date.now();
+                dates.forEach((d, idx) => {
+                    const dateStr = this.formatDate(d);
+                    this.data.push({
+                        ...newItem,
+                        id: baseId + idx,
+                        date: dateStr
+                    });
+                });
+            } else {
+                this.data.push(newItem);
+            }
         }
 
         this.closeModal();
@@ -428,6 +588,7 @@ class TodoApp {
         const count = this.selectedTaskIds.size;
         if (count === 0) return;
         if (!confirm(`确定删除选中的 ${count} 个任务吗？`)) return;
+        this.queueUndo('已删除任务');
         const now = Date.now();
         this.data.forEach(t => {
             if (this.selectedTaskIds.has(t.id) && !t.deletedAt) {
@@ -444,6 +605,7 @@ class TodoApp {
         const t = this.data.find(x => x.id === this.currentTaskId);
         if (!t) { this.closeModal(); return; }
         if (!confirm(`确定删除任务 "${t.title}" 吗？`)) return;
+        this.queueUndo('已删除任务');
         t.deletedAt = Date.now();
         this.saveData();
         this.closeModal();
@@ -454,6 +616,7 @@ class TodoApp {
     restoreTask(id) {
         const t = this.data.find(x => x.id === id);
         if (t) {
+            this.queueUndo('已还原任务');
             t.deletedAt = null;
             this.saveData();
             this.render();
@@ -463,12 +626,14 @@ class TodoApp {
 
     deleteForever(id) {
         if (!confirm('确定彻底删除该任务吗？')) return;
+        this.queueUndo('已彻底删除任务');
         this.data = this.data.filter(t => t.id !== id);
         this.saveData();
         this.render();
     }
     emptyRecycle() {
         if (!confirm('确定清空回收站吗？此操作不可恢复')) return;
+        this.queueUndo('已清空回收站');
         this.data = this.data.filter(t => !t.deletedAt);
         this.saveData();
         this.render();
@@ -480,6 +645,7 @@ class TodoApp {
         if(this.isSelectionMode) return;
         const t = this.data.find(t => t.id === id);
         if (t && !t.deletedAt) {
+            this.queueUndo('已更新任务状态');
             t.status = t.status === 'completed' ? 'todo' : 'completed';
             if (t.status === 'completed' && t.subtasks) t.subtasks.forEach(s => s.completed = true);
             this.saveData();
@@ -490,6 +656,7 @@ class TodoApp {
         if(this.isSelectionMode) return;
         const t = this.data.find(i => i.id === taskId);
         if(t && !t.deletedAt && t.subtasks && t.subtasks[subIndex]) {
+            this.queueUndo('已更新子任务');
             t.subtasks[subIndex].completed = !t.subtasks[subIndex].completed;
             if (t.subtasks.every(s => s.completed)) { t.status = 'completed'; this.showToast('子任务全部完成，任务已自动勾选！'); }
             else { if (t.status === 'completed') t.status = 'todo'; }
@@ -516,7 +683,12 @@ class TodoApp {
         const id = parseInt(ev.dataTransfer.getData("text"));
         const t = this.data.find(i => i.id === id);
         document.querySelector('.dragging')?.classList.remove('dragging');
-        if(t && !t.deletedAt && t.quadrant !== quadrantId) { t.quadrant = quadrantId; this.saveData(); this.render(); }
+        if(t && !t.deletedAt && t.quadrant !== quadrantId) {
+            this.queueUndo('已移动象限');
+            t.quadrant = quadrantId;
+            this.saveData();
+            this.render();
+        }
     }
     
     renderStats(tasks = this.getFilteredData()) {
@@ -604,6 +776,7 @@ class TodoApp {
     setTagFilter(tag) { this.filter.tag = this.filter.tag === tag ? '' : tag; this.renderTags(); this.render(); }
     deleteTag(tag) {
         if (!confirm(`删除标签 "${tag}" 会移除所有包含该标签的任务，确定吗？`)) return;
+        this.queueUndo('已删除标签');
         const now = Date.now();
         this.data.forEach(t => {
             if ((t.tags||[]).includes(tag)) {
@@ -625,6 +798,7 @@ class TodoApp {
             return;
         }
         // 重命名
+        this.queueUndo('已重命名标签');
         this.data.forEach(t => {
             if (t.tags) {
                 t.tags = t.tags.map(x => x === tag ? trimmed : x);
@@ -651,6 +825,62 @@ class TodoApp {
         });
     }
 
+    async ensureHolidayYear(year) {
+        if (!api.auth) return;
+        const y = String(year);
+        if (this.holidaysByYear[y] || this.holidayLoading[y]) return;
+        this.holidayLoading[y] = true;
+        try {
+            const res = await api.request(`/api/holidays/${y}`);
+            if (!res.ok) throw new Error('holiday fetch failed');
+            const json = await res.json();
+            const map = {};
+            (json.days || []).forEach(d => {
+                map[d.date] = { name: d.name, isOffDay: d.isOffDay };
+            });
+            this.holidaysByYear[y] = map;
+        } catch (e) {
+            console.warn('holiday load failed', e);
+        } finally {
+            delete this.holidayLoading[y];
+            this.render();
+        }
+    }
+    getHolidayForDate(dateStr) {
+        const year = String(dateStr || '').slice(0, 4);
+        if (!/^\d{4}$/.test(year)) return null;
+        const map = this.holidaysByYear[year];
+        if (!map) {
+            this.ensureHolidayYear(year);
+            return null;
+        }
+        return map[dateStr] || null;
+    }
+    getLunarText(date) {
+        try {
+            const fmt = new Intl.DateTimeFormat('zh-CN-u-ca-chinese', { month: 'long', day: 'numeric' });
+            const parts = fmt.formatToParts(date);
+            const monthPart = parts.find(p => p.type === 'month')?.value || '';
+            const dayPart = parts.find(p => p.type === 'day')?.value || '';
+            const rawDay = dayPart.replace(/\s/g, '');
+            const dayText = /\d+/.test(rawDay) ? this.formatLunarDay(parseInt(rawDay, 10)) : rawDay;
+            return `${monthPart}${dayText}`.replace(/\s/g, '');
+        } catch (e) {
+            return '';
+        }
+    }
+    formatLunarDay(day) {
+        const map = {
+            1: '初一', 2: '初二', 3: '初三', 4: '初四', 5: '初五',
+            6: '初六', 7: '初七', 8: '初八', 9: '初九', 10: '初十',
+            11: '十一', 12: '十二', 13: '十三', 14: '十四', 15: '十五',
+            16: '十六', 17: '十七', 18: '十八', 19: '十九', 20: '二十',
+            21: '廿一', 22: '廿二', 23: '廿三', 24: '廿四', 25: '廿五',
+            26: '廿六', 27: '廿七', 28: '廿八', 29: '廿九', 30: '三十'
+        };
+        return map[day] || '';
+    }
+
     cleanupRecycle() {
         const now = Date.now();
         const before = this.data.length;
@@ -659,8 +889,55 @@ class TodoApp {
     }
     handleSearch(val) { this.filter.query = val; if(val && this.view!=='search') this.switchView('search'); this.render(); }
     
-    updateDateDisplay() { document.getElementById('date-display').innerText = document.getElementById('cal-date-display').innerText = this.formatDate(this.currentDate); }
-    showToast(msg) { const div = document.createElement('div'); div.className = 'toast show'; div.innerText = msg; document.getElementById('toast-container').appendChild(div); setTimeout(() => div.remove(), 2000); }
+    updateDateDisplay() {
+        const dateText = this.formatDate(this.currentDate);
+        const dateEl = document.getElementById('date-display');
+        const calDateEl = document.getElementById('cal-date-display');
+        if (dateEl) dateEl.innerText = dateText;
+        if (calDateEl) calDateEl.innerText = dateText;
+        const showLunar = this.calendar?.settings?.showLunar !== false;
+        const lunarText = showLunar ? this.getLunarText(this.currentDate) : '';
+        const lunarEl = document.getElementById('lunar-display');
+        if (lunarEl) lunarEl.innerText = lunarText ? `农历 ${lunarText}` : '';
+    }
+    showToast(msg) { 
+        const div = document.createElement('div'); 
+        div.className = 'toast show'; 
+        div.innerText = msg; 
+        document.getElementById('toast-container').appendChild(div); 
+        setTimeout(() => div.remove(), 2000); 
+    }
+    showUndoToast(msg) {
+        const div = document.createElement('div');
+        div.className = 'toast show undo';
+        div.innerHTML = `<span>${msg}</span><button type="button">撤回</button>`;
+        div.querySelector('button').onclick = (e) => { e.stopPropagation(); this.undoLast(); };
+        document.getElementById('toast-container').appendChild(div);
+        return div;
+    }
+    queueUndo(msg) {
+        const snapshot = JSON.parse(JSON.stringify(this.data));
+        if (this.undoTimer) clearTimeout(this.undoTimer);
+        if (this.undoState?.toastEl) this.undoState.toastEl.remove();
+        const toastEl = this.showUndoToast(msg);
+        this.undoState = { snapshot, toastEl };
+        this.undoTimer = setTimeout(() => this.clearUndo(), 10000);
+    }
+    clearUndo() {
+        if (this.undoTimer) clearTimeout(this.undoTimer);
+        this.undoTimer = null;
+        if (this.undoState?.toastEl) this.undoState.toastEl.remove();
+        this.undoState = null;
+    }
+    undoLast() {
+        if (!this.undoState) return;
+        this.data = this.undoState.snapshot;
+        this.clearUndo();
+        this.saveData(true);
+        this.render();
+        this.renderTags();
+        this.showToast('已撤回');
+    }
     
     formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
     timeToMinutes(str) { const [h,m] = str.split(':').map(Number); return h*60+m; }
