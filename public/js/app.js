@@ -452,7 +452,19 @@ class TodoApp {
         document.getElementById('task-quadrant').value = t ? t.quadrant || 'q2' : 'q2';
         document.getElementById('task-tags').value = t ? (t.tags || []).join(', ') : '';
         const inboxBox = document.getElementById('task-inbox');
-        if (inboxBox) inboxBox.checked = isInbox;
+        if (inboxBox) {
+            inboxBox.checked = isInbox;
+            inboxBox.onchange = () => {
+                if (!inboxBox.checked) {
+                    const dateEl = document.getElementById('task-date');
+                    if (dateEl && !dateEl.value) dateEl.value = this.formatDate(this.currentDate);
+                } else {
+                    document.getElementById('task-date').value = '';
+                    document.getElementById('task-start').value = '';
+                    document.getElementById('task-end').value = '';
+                }
+            };
+        }
         if (isInbox) {
             document.getElementById('task-date').value = '';
             document.getElementById('task-start').value = '';
@@ -489,7 +501,11 @@ class TodoApp {
         const isEdit = !!this.currentTaskId;
         
         const inboxBox = document.getElementById('task-inbox');
-        const isInbox = inboxBox ? inboxBox.checked : false;
+        const dateVal = document.getElementById('task-date').value;
+        const startVal = document.getElementById('task-start').value;
+        const endVal = document.getElementById('task-end').value;
+        let isInbox = inboxBox ? inboxBox.checked : false;
+        if (dateVal || startVal || endVal) isInbox = false;
         const repeatEnabled = !isEdit && !isInbox && (document.getElementById('task-repeat-enabled')?.checked);
         if (repeatEnabled && !document.getElementById('task-date').value) {
             return alert("重复任务需要设置日期");
@@ -511,9 +527,9 @@ class TodoApp {
         const newItem = {
             id: this.currentTaskId || Date.now(),
             title, 
-            date: isInbox ? '' : document.getElementById('task-date').value,
-            start: isInbox ? '' : document.getElementById('task-start').value,
-            end: isInbox ? '' : document.getElementById('task-end').value,
+            date: isInbox ? '' : dateVal,
+            start: isInbox ? '' : startVal,
+            end: isInbox ? '' : endVal,
             quadrant: document.getElementById('task-quadrant').value,
             tags: document.getElementById('task-tags').value.split(/[,，]/).map(t => t.trim()).filter(t => t),
             subtasks, status,
@@ -695,7 +711,8 @@ class TodoApp {
         const done = tasks.filter(t => t.status === 'completed').length;
         const total = tasks.length;
         const rate = total === 0 ? 0 : Math.round((done/total)*100);
-        document.getElementById('completion-rate').innerText = rate + '%';
+        const rateEl = document.getElementById('completion-rate');
+        if (rateEl) rateEl.innerText = rate + '%';
         
         const currentAnchor = new Date(this.statsDate);
         const day = currentAnchor.getDay();
