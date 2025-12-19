@@ -179,6 +179,11 @@ class TodoApp {
 
     async saveData(force = false) {
         try {
+            if (api.isLocalMode()) {
+                const json = await api.saveData(this.data);
+                if (json && json.success) this.dataVersion = json.version;
+                return;
+            }
             const body = { data: this.data, version: this.dataVersion, force: force };
             const res = await api.request('/api/data', 'POST', body);
             if (res.status === 409) {
