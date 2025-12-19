@@ -1,27 +1,59 @@
-# Node dependencies
-node_modules/
-
-# Logs and runtime
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-*.log
-
-# OS/IDE
+# =========================
+# OS / Editor
+# =========================
 .DS_Store
 Thumbs.db
+desktop.ini
+
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Build/cache
-dist/
-tmp/
-*.tmp
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Local data
-database.sqlite
-
-# Env/credentials
+# =========================
+# Env / Secrets
+# =========================
 .env
-*.env.local
+.env.*
+!.env.example
+
+# =========================
+# Ignore DB (SQLite) - 忽略 sql 数据文件
+# =========================
+database.sqlite
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.bak
+
+# =========================
+# Build outputs
+# =========================
+dist/
+build/
+coverage/
+out/
+.tmp/
+temp/
+
+# =========================
+# Windows / misc
+# =========================
+*.lnk
+
+# =========================
+# 注意：
+# 1) node_modules 不忽略（保留依赖）
+# 2) bin 不忽略（保留内置运行时）
+# =========================
