@@ -172,6 +172,8 @@ body {
 /* 统计卡片 */
 .stats-card { background: var(--glass-card); border-radius: 16px; padding: 20px; margin-bottom: 20px; }
 .settings-toggle { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
+.mobile-only { display: none; }
+.mobile-section { background: rgba(255,255,255,0.4); border-radius: 12px; padding: 12px; margin-top: 10px; }
 
 /* Modal */
 #modal-overlay, #admin-modal, #export-modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; }
@@ -226,6 +228,9 @@ body {
     .week-col { flex-direction: row; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.05); min-height: 80px; }
     .week-header { width: 70px; border-bottom: none; border-right: 1px solid rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: center; }
     #selection-bar { bottom: 90px; }
+    .mobile-only { display: block; }
+    #mobile-tabbar .tab-item[data-view="inbox"],
+    #mobile-tabbar .tab-item[data-view="recycle"] { display: none; }
 }
 
 /* Local Admin 特有 */

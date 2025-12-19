@@ -84,6 +84,11 @@ class TodoApp {
         const sidebarTitle = document.querySelector('#sidebar h2');
         if (sidebarTitle) sidebarTitle.textContent = title;
     }
+    renderInboxList(tasks, targetId) {
+        const box = document.getElementById(targetId);
+        if (!box) return;
+        box.innerHTML = tasks.map(t => this.createCardHtml(t)).join('') || '<div style="opacity:0.7">&#26242;&#26080;&#24453;&#21150;&#31665;&#20219;&#21153;</div>';
+    }
 
     // --- Auth & Admin (委托给 AdminPanel 或 API) ---
     async login() {
@@ -293,6 +298,7 @@ class TodoApp {
         const allTasks = this.getFilteredData();
         const inboxTasks = allTasks.filter(t => this.isInboxTask(t));
         const datedTasks = allTasks.filter(t => !this.isInboxTask(t));
+        const deletedTasks = this.getFilteredData({ onlyDeleted: true });
 
         // 1. 渲染多选操作栏
         this.renderSelectionBar();
@@ -306,9 +312,8 @@ class TodoApp {
             document.getElementById('list-todo').innerHTML = datedTasks.filter(t => t.status !== 'completed').map(t => this.createCardHtml(t)).join('');
             document.getElementById('list-done').innerHTML = datedTasks.filter(t => t.status === 'completed').map(t => this.createCardHtml(t)).join('');
         }
-        if (this.view === 'inbox') {
-            document.getElementById('list-inbox').innerHTML = inboxTasks.map(t => this.createCardHtml(t)).join('') || '<div style=\"opacity:0.7\">暂无待办箱任务</div>';
-        }
+        this.renderInboxList(inboxTasks, 'list-inbox');
+        this.renderInboxList(inboxTasks, 'list-inbox-mobile');
         if (this.view === 'matrix') {
             ['q1','q2','q3','q4'].forEach(q => {
                 document.querySelector('#'+q+' .q-list').innerHTML = datedTasks.filter(t => t.status !== 'completed' && t.quadrant === q).map(t => this.createCardHtml(t)).join('');
@@ -321,9 +326,9 @@ class TodoApp {
              this.renderStats(datedTasks);
         }
         if (this.view === 'recycle') {
-            const deleted = this.getFilteredData({ onlyDeleted: true });
-            this.renderRecycle(deleted);
+            this.renderRecycle(deletedTasks);
         }
+        this.renderRecycle(deletedTasks, 'recycle-list-mobile');
     }
 
     // --- 辅助逻辑 ---
@@ -807,8 +812,8 @@ class TodoApp {
     }
     changeStatsWeek(off) { this.statsDate.setDate(this.statsDate.getDate() + off * 7); this.render(); }
 
-    renderRecycle(tasks) {
-        const box = document.getElementById('recycle-list');
+    renderRecycle(tasks, targetId = 'recycle-list') {
+        const box = document.getElementById(targetId);
         if (!box) return;
         const clearBtn = `<div style="text-align:right; margin-bottom:10px;"><button class="btn btn-sm btn-danger" onclick="app.emptyRecycle()">清空回收站</button></div>`;
         if (!tasks.length) { box.innerHTML = clearBtn + '<div style="opacity:0.7">回收站空空如也</div>'; return; }
