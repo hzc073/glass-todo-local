@@ -4,6 +4,7 @@ const api = {
     user: localStorage.getItem('user') || '',
     baseUrl: '',
     useLocalStorage: false,
+    holidayJsonUrl: '',
     dataKey: 'glass_todo_data',
     dataVersionKey: 'glass_todo_version',
 
@@ -25,6 +26,10 @@ const api = {
         const base = String(config.apiBaseUrl || '').trim();
         this.baseUrl = base ? base.replace(/\/+$/, '') : '';
         this.useLocalStorage = !!config.useLocalStorage;
+        this.holidayJsonUrl = String(config.holidayJsonUrl || '').trim();
+        if (!this.useLocalStorage && this.auth === 'local') {
+            this.clearAuth();
+        }
         if (this.useLocalStorage && !this.auth) {
             const existingUser = localStorage.getItem('user') || 'demo';
             this.setAuth(existingUser, 'local');

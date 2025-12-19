@@ -884,14 +884,24 @@ class TodoApp {
 
     async ensureHolidayYear(year) {
         if (!api.auth) return;
-        if (api.isLocalMode() && !api.baseUrl) return;
         const y = String(year);
         if (this.holidaysByYear[y] || this.holidayLoading[y]) return;
         this.holidayLoading[y] = true;
         try {
-            const res = await api.request(`/api/holidays/${y}`);
-            if (!res.ok) throw new Error('holiday fetch failed');
-            const json = await res.json();
+            let json = null;
+            if (api.holidayJsonUrl) {
+                const url = api.holidayJsonUrl.includes('{year}')
+                    ? api.holidayJsonUrl.replace('{year}', y)
+                    : api.holidayJsonUrl;
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) throw new Error('holiday json fetch failed');
+                json = await res.json();
+            } else {
+                if (api.isLocalMode() && !api.baseUrl) return;
+                const res = await api.request(`/api/holidays/${y}`);
+                if (!res.ok) throw new Error('holiday fetch failed');
+                json = await res.json();
+            }
             const map = {};
             (json.days || []).forEach(d => {
                 map[d.date] = { name: d.name, isOffDay: d.isOffDay };
