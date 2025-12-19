@@ -1,0 +1,5 @@
+{
+  "apiBaseUrl": "",
+  "useLocalStorage": false,
+  "appTitle": "Glass Todo"
+}

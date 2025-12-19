@@ -2,6 +2,17 @@ import api from './api.js';
 import AdminPanel from './admin.js';
 import CalendarView from './calendar.js';
 
+async function loadAppConfig() {
+    try {
+        const res = await fetch('config.json', { cache: 'no-store' });
+        if (!res.ok) return {};
+        const json = await res.json();
+        return json && typeof json === 'object' ? json : {};
+    } catch (e) {
+        return {};
+    }
+}
+
 class TodoApp {
     constructor() {
         this.data = [];
@@ -65,6 +76,14 @@ class TodoApp {
         });
     }
 
+    applyConfig(config = {}) {
+        const title = String(config.appTitle || '').trim();
+        if (!title) return;
+        document.title = title;
+        const sidebarTitle = document.querySelector('#sidebar h2');
+        if (sidebarTitle) sidebarTitle.textContent = title;
+    }
+
     // --- Auth & Admin (委托给 AdminPanel 或 API) ---
     async login() {
         const u = document.getElementById('login-user').value.trim();
@@ -125,10 +144,16 @@ class TodoApp {
                 const cleaned = this.cleanupRecycle();
                 if (cleaned) await this.saveData(true);
                 // 检查权限
-                const loginCheck = await fetch('/api/login', { method:'POST', headers: { 'Authorization': api.auth } });
-                const loginJson = await loginCheck.json();
-                this.isAdmin = loginJson.isAdmin;
-                if(this.isAdmin) document.getElementById('admin-btn').style.display = 'block';
+                if (!api.isLocalMode()) {
+                    const loginCheck = await api.request('/api/login', 'POST');
+                    const loginJson = await loginCheck.json();
+                    this.isAdmin = loginJson.isAdmin;
+                    if(this.isAdmin) document.getElementById('admin-btn').style.display = 'block';
+                } else {
+                    this.isAdmin = false;
+                    const adminBtn = document.getElementById('admin-btn');
+                    if (adminBtn) adminBtn.style.display = 'none';
+                }
                 
                 this.render();
                 this.renderTags();
@@ -844,6 +869,7 @@ class TodoApp {
 
     async ensureHolidayYear(year) {
         if (!api.auth) return;
+        if (api.isLocalMode() && !api.baseUrl) return;
         const y = String(year);
         if (this.holidaysByYear[y] || this.holidayLoading[y]) return;
         this.holidayLoading[y] = true;
@@ -1008,4 +1034,8 @@ class TodoApp {
     }
 }
 const app = new TodoApp();
-app.init();
+loadAppConfig().then((config) => {
+    api.setConfig(config);
+    app.applyConfig(config);
+    app.init();
+});
