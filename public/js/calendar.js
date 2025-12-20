@@ -141,7 +141,7 @@ export default class CalendarView {
         
         // 全天任务
         document.getElementById('cal-allday-list').innerHTML = dayTasks.filter(t => !t.start).map(t => 
-            `<div class="task-card btn-sm" style="display:inline-block; margin:2px; cursor:grab;" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="app.handleCardClick(event, ${t.id})">${t.title}</div>`
+            `<div class="task-card btn-sm ${t.status}" style="display:inline-block; margin:2px; cursor:grab;" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="app.handleCardClick(event, ${t.id})">${t.title}</div>`
         ).join('');
 
         const container = document.getElementById('day-timeline');
@@ -269,7 +269,7 @@ export default class CalendarView {
                 const showTags = this.settings.showTags && t.tags && t.tags.length;
                 const tagText = showTags ? ` <span class="month-tag">#${t.tags[0]}</span>` : '';
                 const qColor = this.app.getQuadrantColor(t.quadrant);
-                cell.innerHTML += `<div class="month-task-pill" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()">${t.title}${tagText}</div>`;
+                cell.innerHTML += `<div class="month-task-pill ${t.status}" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()">${t.title}${tagText}</div>`;
             });
             grid.appendChild(cell);
         }
