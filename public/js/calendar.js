@@ -33,6 +33,7 @@ export default class CalendarView {
             container.style.display = 'inline-block';
             container.innerHTML = `
                 <button id="btn-cal-settings" class="btn-text" style="font-size:1.2rem; margin-left:10px;">⚙️</button>
+                <span class="help-icon" title="操作提示：单击编辑任务块，双击完成任务块，任务块可自由拖拽。">?</span>
                 <div id="cal-settings-panel">
                     <div style="font-weight:bold; margin-bottom:10px; color:#333; font-size:0.9rem;">日历显示设置</div>
                     <div class="cal-setting-item" data-key="showTime">
