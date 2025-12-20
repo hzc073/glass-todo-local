@@ -55,7 +55,7 @@ Glass Todo 使用指南
 
 3. 发布后端
     1. 运行命令 `wrangler deploy`
-发布成功后，你会得到一个后端 API 地址，例如：https://glass-todo-worker.xxx.workers.dev，请记录下来。
+发布成功后，你会得到一个后端 API 地址，例如：https://glass-todo-worker.xxx.workers.dev
 
 4. 配置前端并推送 
 
