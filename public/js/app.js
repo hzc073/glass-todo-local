@@ -37,6 +37,7 @@ class TodoApp {
         this.isLoggingOut = false;
         this.dragActive = false;
         this.dragEndAt = 0;
+        this.mobileTaskIndex = 0;
 
         this.holidaysByYear = {};
         this.holidayLoading = {};
@@ -61,6 +62,7 @@ class TodoApp {
     }
 
     async init() {
+        this.registerServiceWorker();
         if(api.auth) {
             document.getElementById('login-modal').style.display = 'none';
             document.getElementById('current-user').innerText = api.user;
@@ -76,6 +78,7 @@ class TodoApp {
         this.initViewSettingsControls();
         this.initCalendarDefaultModeControl();
         this.syncAutoMigrateUI();
+        this.initMobileSwipes();
         if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
         
         setInterval(() => { if (!document.hidden) this.loadData(); }, 30000);
@@ -232,6 +235,7 @@ class TodoApp {
         if (v === 'calendar') this.calendar.setMode(this.calendarDefaultMode);
         
         this.render();
+        if (v === 'tasks') this.applyTaskSwipePosition();
     }
 
     isViewEnabled(v) {
@@ -304,6 +308,101 @@ class TodoApp {
         this.syncViewSettingUI();
     }
     syncAutoMigrateUI() { this.syncViewSettingUI(); }
+    registerServiceWorker() {
+        if (!('serviceWorker' in navigator)) return;
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch((err) => {
+                console.warn('Service worker registration failed', err);
+            });
+        });
+    }
+
+    isMobileViewport() {
+        return window.matchMedia('(max-width: 768px)').matches;
+    }
+    initMobileSwipes() {
+        this.setupTaskSwipe();
+        this.setupCalendarSwipe();
+        window.addEventListener('resize', () => this.applyTaskSwipePosition());
+    }
+    setupTaskSwipe() {
+        const board = document.querySelector('#view-tasks .task-board');
+        if (!board) return;
+        board.addEventListener('touchstart', (e) => {
+            if (!this.isMobileViewport() || e.touches.length !== 1) return;
+            const t = e.touches[0];
+            this.taskSwipeStart = { x: t.clientX, y: t.clientY };
+        }, { passive: true });
+        board.addEventListener('touchend', (e) => {
+            if (!this.isMobileViewport() || !this.taskSwipeStart) return;
+            const t = e.changedTouches && e.changedTouches[0];
+            const start = this.taskSwipeStart;
+            this.taskSwipeStart = null;
+            if (!t) return;
+            const dx = t.clientX - start.x;
+            const dy = t.clientY - start.y;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+            if (absX < 40 || absX < absY * 1.2) return;
+            this.setMobileTaskIndex(this.mobileTaskIndex + (dx < 0 ? 1 : -1));
+        }, { passive: true });
+        this.applyTaskSwipePosition();
+    }
+    applyTaskSwipePosition() {
+        const board = document.querySelector('#view-tasks .task-board');
+        if (!board) return;
+        if (!this.isMobileViewport()) {
+            board.style.transform = '';
+            this.updateTaskColumnStates();
+            return;
+        }
+        const maxIndex = 2;
+        this.mobileTaskIndex = Math.max(0, Math.min(maxIndex, this.mobileTaskIndex));
+        board.style.transform = `translateX(-${this.mobileTaskIndex * 100}%)`;
+        this.updateTaskColumnStates();
+    }
+    setMobileTaskIndex(index) {
+        const maxIndex = 2;
+        const next = Math.max(0, Math.min(maxIndex, index));
+        if (next === this.mobileTaskIndex) return;
+        this.mobileTaskIndex = next;
+        this.applyTaskSwipePosition();
+    }
+    updateTaskColumnStates() {
+        const columns = document.querySelectorAll('#view-tasks .task-column');
+        if (!columns.length) return;
+        if (!this.isMobileViewport()) {
+            columns.forEach(col => col.classList.remove('is-active'));
+            return;
+        }
+        columns.forEach((col, idx) => col.classList.toggle('is-active', idx === this.mobileTaskIndex));
+    }
+    setupCalendarSwipe() {
+        const container = document.getElementById('view-calendar');
+        if (!container) return;
+        container.addEventListener('touchstart', (e) => {
+            if (!this.isMobileViewport() || this.view !== 'calendar' || e.touches.length !== 1) return;
+            const t = e.touches[0];
+            this.calendarSwipeStart = { x: t.clientX, y: t.clientY };
+        }, { passive: true });
+        container.addEventListener('touchend', (e) => {
+            if (!this.isMobileViewport() || this.view !== 'calendar' || !this.calendarSwipeStart) return;
+            const t = e.changedTouches && e.changedTouches[0];
+            const start = this.calendarSwipeStart;
+            this.calendarSwipeStart = null;
+            if (!t) return;
+            const dx = t.clientX - start.x;
+            const dy = t.clientY - start.y;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+            if (absX < 40 || absX < absY * 1.2) return;
+            const modes = ['day', 'week', 'month'];
+            let idx = modes.indexOf(this.calendar.mode || this.calendarDefaultMode);
+            if (idx < 0) idx = 0;
+            const next = Math.max(0, Math.min(modes.length - 1, idx + (dx < 0 ? 1 : -1)));
+            if (next !== idx) this.calendar.setMode(modes[next]);
+        }, { passive: true });
+    }
 
     // 代理日历方法，供 HTML onclick 调用
     setCalendarMode(mode) { this.calendar.setMode(mode); }

@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="manifest" href="manifest.json">
     <title>Glass Todo Pro (Local)</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -127,7 +129,7 @@
                     </div>
                     <div id="list-todo" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'todo')"></div>
                 </section>
-                <section class="task-column desktop-only" id="inbox-column">
+                <section class="task-column" id="inbox-column">
                     <div class="task-column-header">
                         <h4>待办箱</h4>
                         <span class="task-count" id="inbox-count"></span>
