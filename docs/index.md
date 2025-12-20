@@ -87,21 +87,21 @@ Glass Todo 使用指南
 
 几分钟后，你将获得一个 Pages 域名（如 https://xxx.pages.dev），访问即可使用！
 
-❓ 常见问题 (FAQ)
+### 常见问题 (FAQ)
 
-Q1：部署后页面能打开，但一直提示「网络错误 / 无法连接服务器」？
+#### Q1：部署后页面能打开，但一直提示「网络错误 / 无法连接服务器」？
 
 云端部署：请检查 Github 仓库里的 config.json 文件中api地址是否已更新为 https 开头的 Worker 地址。如果是 http 或 127.0.0.1 则无法在公网使用。同时也请确认你是否执行了 git push。
 
 本地部署：请确保后端服务窗口未关闭,config.json中的api地址为http://127.0.0.1:3000。
 
-Q2：提示 "Cross-Origin Request Blocked" (CORS 跨域错误)？
+#### Q2：提示 "Cross-Origin Request Blocked" (CORS 跨域错误)？
 
 这是因为后端 Worker 默认拦截了来自 Pages 前端的请求。
 
 请检查 Worker 代码 (index.js)，确保响应头 (Response Headers) 中包含了 Access-Control-Allow-Origin: *。
 
-Q3：Cloudflare 页面加载非常慢或超时？
+#### Q3：Cloudflare 页面加载非常慢或超时？
 
 部分地区连接 *.workers.dev 或 *.pages.dev 可能存在网络波动。
 
