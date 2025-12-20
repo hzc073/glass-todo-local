@@ -141,7 +141,7 @@ export default class CalendarView {
         
         // 全天任务
         document.getElementById('cal-allday-list').innerHTML = dayTasks.filter(t => !t.start).map(t => 
-            `<div class="task-card btn-sm" style="display:inline-block; margin:2px; cursor:grab;" draggable="true" ondragstart="app.drag(event, ${t.id})" onclick="app.openModal(${t.id})">${t.title}</div>`
+            `<div class="task-card btn-sm" style="display:inline-block; margin:2px; cursor:grab;" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="app.handleCardClick(event, ${t.id})">${t.title}</div>`
         ).join('');
 
         const container = document.getElementById('day-timeline');
@@ -164,6 +164,7 @@ export default class CalendarView {
             div.setAttribute('data-id', t.id);
             div.setAttribute('draggable', 'true');
             div.ondragstart = (ev) => this.app.drag(ev, t.id);
+            div.ondragend = () => this.app.finishDrag();
             
             div.style.top = startMin + 'px';
             div.style.height = Math.max(15, height) + 'px';
@@ -184,7 +185,7 @@ export default class CalendarView {
                 ${!isCompact ? tagHtml : ''}
                 <div class="resize-handle bottom" onmousedown="app.calendar.handleResizeStart(event, ${t.id}, 'bottom')"></div>
             `;
-            div.onclick = (e) => { e.stopPropagation(); this.app.openModal(t.id); };
+            div.onclick = (e) => { e.stopPropagation(); this.app.handleCardClick(e, t.id); };
             container.appendChild(div);
         });
     }
@@ -220,7 +221,7 @@ export default class CalendarView {
                     ${tasks.filter(t=>t.date===dStr).map(t => {
                         const timeHtml = this.settings.showTime && t.start ? `<span style="opacity:0.7; font-size:0.7rem; margin-right:4px;">${t.start}</span>` : '';
                         const tagHtml = this.settings.showTags && t.tags && t.tags.length ? `<span style="font-size:0.7rem; color:var(--primary); margin-left:4px;">#${t.tags[0]}</span>` : '';
-                        return `<div class="week-task-item ${t.status}" draggable="true" ondragstart="app.drag(event, ${t.id})" onclick="event.stopPropagation();app.openModal(${t.id})">
+                        return `<div class="week-task-item ${t.status}" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="event.stopPropagation();app.handleCardClick(event, ${t.id})">
                             ${timeHtml}${t.title}${tagHtml}
                         </div>`;
                     }).join('')}
@@ -266,7 +267,7 @@ export default class CalendarView {
                 const showTags = this.settings.showTags && t.tags && t.tags.length;
                 const tagText = showTags ? ` <span class="month-tag">#${t.tags[0]}</span>` : '';
                 const qColor = this.app.getQuadrantColor(t.quadrant);
-                cell.innerHTML += `<div class="month-task-pill" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})">${t.title}${tagText}</div>`;
+                cell.innerHTML += `<div class="month-task-pill" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()">${t.title}${tagText}</div>`;
             });
             grid.appendChild(cell);
         }

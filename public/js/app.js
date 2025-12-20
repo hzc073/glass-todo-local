@@ -33,6 +33,8 @@ class TodoApp {
         this.undoState = null;
         this.undoTimer = null;
         this.isLoggingOut = false;
+        this.dragActive = false;
+        this.dragEndAt = 0;
 
         this.holidaysByYear = {};
         this.holidayLoading = {};
@@ -266,7 +268,7 @@ class TodoApp {
     // 代理日历方法，供 HTML onclick 调用
     setCalendarMode(mode) { this.calendar.setMode(mode); }
     changeDate(off) { this.calendar.changeDate(off); }
-    dropOnTimeline(ev) { this.calendar.handleDropOnTimeline(ev); }
+    dropOnTimeline(ev) { this.calendar.handleDropOnTimeline(ev); this.finishDrag(); }
     
     // HTML ondrop 代理
     allowDrop(ev) { ev.preventDefault(); ev.currentTarget.style.background = 'rgba(0,122,255,0.1)'; }
@@ -276,7 +278,7 @@ class TodoApp {
         ev.currentTarget.style.background = '';
         const id = parseInt(ev.dataTransfer.getData("text"));
         const t = this.data.find(i => i.id === id);
-        document.querySelector('.dragging')?.classList.remove('dragging');
+        this.finishDrag();
         if (t && !t.deletedAt && t.date !== dateStr) {
             this.queueUndo('已移动日期');
             t.date = dateStr;
@@ -467,7 +469,7 @@ class TodoApp {
         const dateText = this.isInboxTask(t) ? '待办箱' : (t.date || '未设日期');
         
         const selClass = this.isSelectionMode ? `selection-mode ${isSelected ? 'selected' : ''}` : '';
-        const clickHandler = this.isSelectionMode ? `app.toggleSelection(${t.id})` : `app.openModal(${t.id})`;
+        const clickHandler = `app.handleCardClick(event, ${t.id})`;
         
         let subHtml = '';
         if(t.subtasks && t.subtasks.length > 0 && !this.isSelectionMode) {
@@ -484,6 +486,7 @@ class TodoApp {
             <div class="task-card ${t.status} ${selClass}" style="border-left-color:${qColor}" 
                  draggable="${!this.isSelectionMode}" 
                  ondragstart="app.drag(event, ${t.id})" 
+                 ondragend="app.finishDrag()"
                  onmousedown="app.handleCardPress(event, ${t.id})" 
                  onmouseup="app.handleCardRelease()" 
                  ontouchstart="app.handleCardPress(event, ${t.id})" 
@@ -825,16 +828,64 @@ class TodoApp {
         if(this.isSelectionMode) { ev.preventDefault(); return; } 
         const t = this.data.find(x => x.id === id);
         if (t && t.deletedAt) { ev.preventDefault(); return; }
-        ev.dataTransfer.setData("text", id); ev.target.classList.add('dragging'); 
+        this.dragActive = true;
+        this.dragEndAt = 0;
+        ev.dataTransfer.setData("text", id);
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.target.classList.add('dragging'); 
     }
     drop(ev, quadrantId) {
         ev.preventDefault();
         const id = parseInt(ev.dataTransfer.getData("text"));
         const t = this.data.find(i => i.id === id);
-        document.querySelector('.dragging')?.classList.remove('dragging');
+        this.finishDrag();
         if(t && !t.deletedAt && t.quadrant !== quadrantId) {
             this.queueUndo('已移动象限');
             t.quadrant = quadrantId;
+            this.saveData();
+            this.render();
+        }
+    }
+
+    handleCardClick(ev, id) {
+        if (this.dragActive || (this.dragEndAt && Date.now() - this.dragEndAt < 200)) return;
+        if (this.isSelectionMode) { this.toggleSelection(id); return; }
+        this.openModal(id);
+    }
+    finishDrag() {
+        this.dragActive = false;
+        this.dragEndAt = Date.now();
+        document.querySelector('.dragging')?.classList.remove('dragging');
+    }
+    dropOnTaskList(ev, target) {
+        ev.preventDefault();
+        ev.currentTarget.style.background = '';
+        const id = parseInt(ev.dataTransfer.getData("text"));
+        const t = this.data.find(i => i.id === id);
+        this.finishDrag();
+        if (!t || t.deletedAt) return;
+        let changed = false;
+        if (target === 'todo') {
+            if (t.status === 'completed') { t.status = 'todo'; changed = true; }
+            if (t.inbox) { t.inbox = false; changed = true; }
+        } else if (target === 'done') {
+            if (t.status !== 'completed') { t.status = 'completed'; changed = true; }
+            if (t.inbox) { t.inbox = false; changed = true; }
+            if (t.subtasks) {
+                const hadIncomplete = t.subtasks.some(s => !s.completed);
+                if (hadIncomplete) changed = true;
+                t.subtasks.forEach(s => { s.completed = true; });
+            }
+        } else if (target === 'inbox') {
+            if (!t.inbox || t.status === 'completed' || t.date || t.start || t.end) changed = true;
+            t.inbox = true;
+            t.status = 'todo';
+            t.date = '';
+            t.start = '';
+            t.end = '';
+        }
+        if (changed) {
+            this.queueUndo('已移动任务');
             this.saveData();
             this.render();
         }
