@@ -351,8 +351,12 @@ class TodoApp {
         const mobileBox = document.getElementById('list-inbox-mobile');
         if (mobileBox) mobileBox.innerHTML = '';
         if (this.view === 'matrix') {
+            const todayStr = this.formatDate(this.currentDate);
             ['q1','q2','q3','q4'].forEach(q => {
-                document.querySelector('#'+q+' .q-list').innerHTML = datedTasks.filter(t => t.status !== 'completed' && t.quadrant === q).map(t => this.createCardHtml(t)).join('');
+                document.querySelector('#'+q+' .q-list').innerHTML = datedTasks
+                    .filter(t => t.status !== 'completed' && t.quadrant === q && t.date === todayStr)
+                    .map(t => this.createCardHtml(t))
+                    .join('');
             });
         }
         if (this.view === 'calendar') {
