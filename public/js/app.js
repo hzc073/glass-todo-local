@@ -311,8 +311,19 @@ class TodoApp {
             return;
         }
         if (this.view === 'tasks') {
-            document.getElementById('list-todo').innerHTML = datedTasks.filter(t => t.status !== 'completed').map(t => this.createCardHtml(t)).join('');
-            document.getElementById('list-done').innerHTML = datedTasks.filter(t => t.status === 'completed').map(t => this.createCardHtml(t)).join('');
+            const todoTasks = datedTasks.filter(t => t.status !== 'completed');
+            const doneTasks = datedTasks.filter(t => t.status === 'completed');
+            const todoBox = document.getElementById('list-todo');
+            const doneBox = document.getElementById('list-done');
+            if (todoBox) todoBox.innerHTML = this.buildTodoGroups(todoTasks);
+            if (doneBox) doneBox.innerHTML = doneTasks
+                .sort((a, b) => this.sortByDateTime(a, b, true))
+                .map(t => this.createCardHtml(t))
+                .join('') || '<div class="task-empty">暂无已完成任务</div>';
+            const todoCountEl = document.getElementById('todo-count');
+            const doneCountEl = document.getElementById('done-count');
+            if (todoCountEl) todoCountEl.innerText = `${todoTasks.length}`;
+            if (doneCountEl) doneCountEl.innerText = `${doneTasks.length}`;
         }
         this.renderInboxList(inboxTasks, 'list-inbox');
         if (this.viewSettings.inbox) {
@@ -335,6 +346,78 @@ class TodoApp {
         if (this.view === 'recycle') {
             this.renderRecycle(deletedTasks);
         }
+    }
+
+    getDateStamp(dateStr) {
+        if (!dateStr) return null;
+        const ts = Date.parse(`${dateStr}T00:00:00`);
+        return Number.isNaN(ts) ? null : ts;
+    }
+    sortByDateTime(a, b, desc = false) {
+        const aStamp = this.getDateStamp(a.date) ?? 0;
+        const bStamp = this.getDateStamp(b.date) ?? 0;
+        if (aStamp !== bStamp) return desc ? bStamp - aStamp : aStamp - bStamp;
+        const aTime = a.start ? this.timeToMinutes(a.start) : (a.end ? this.timeToMinutes(a.end) : 9999);
+        const bTime = b.start ? this.timeToMinutes(b.start) : (b.end ? this.timeToMinutes(b.end) : 9999);
+        if (aTime !== bTime) return desc ? bTime - aTime : aTime - bTime;
+        return String(a.title || '').localeCompare(String(b.title || ''));
+    }
+    buildTodoGroups(tasks) {
+        const todayStr = this.formatDate(this.currentDate);
+        const todayStamp = this.getDateStamp(todayStr) ?? Date.now();
+        const next7Stamp = todayStamp + 7 * 24 * 60 * 60 * 1000;
+
+        const list = Array.isArray(tasks) ? tasks.slice() : [];
+        const groups = [
+            {
+                key: 'overdue',
+                title: '已过期',
+                items: list.filter(t => {
+                    const stamp = this.getDateStamp(t.date);
+                    return stamp !== null && stamp < todayStamp;
+                })
+            },
+            {
+                key: 'today',
+                title: '今天',
+                items: list.filter(t => t.date === todayStr)
+            },
+            {
+                key: 'next7',
+                title: '未来7天',
+                items: list.filter(t => {
+                    const stamp = this.getDateStamp(t.date);
+                    return stamp !== null && stamp > todayStamp && stamp <= next7Stamp;
+                })
+            },
+            {
+                key: 'later',
+                title: '更晚',
+                items: list.filter(t => {
+                    const stamp = this.getDateStamp(t.date);
+                    return stamp !== null && stamp > next7Stamp;
+                })
+            },
+            {
+                key: 'undated',
+                title: '未设置日期',
+                items: list.filter(t => this.getDateStamp(t.date) === null)
+            }
+        ];
+
+        const sections = groups.map(g => {
+            if (!g.items.length) return '';
+            g.items.sort((a, b) => this.sortByDateTime(a, b));
+            const itemsHtml = g.items.map(t => this.createCardHtml(t)).join('');
+            return `
+                <div class="task-group">
+                    <div class="task-group-title">${g.title}<span class="task-group-count">${g.items.length}</span></div>
+                    <div class="task-group-list">${itemsHtml}</div>
+                </div>
+            `;
+        }).join('');
+
+        return sections || '<div class="task-empty">暂无待办事项</div>';
     }
 
     // --- 辅助逻辑 ---

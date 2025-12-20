@@ -65,7 +65,8 @@ body {
 .task-card { background: white; border-radius: 10px; padding: 12px 15px; margin-bottom: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); display: flex; align-items: flex-start; gap: 12px; transition: 0.2s; border-left: 4px solid transparent; cursor: pointer; position: relative; }
 .task-card:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
 .task-card.completed { opacity: 0.6; background: #f9f9f9; }
-.task-card.completed .task-title { text-decoration: line-through; color: #888; }
+.task-title { color: var(--text-dark); }
+.task-card.completed .task-title { text-decoration: line-through; color: var(--text-dark); opacity: 0.8; }
 .task-card.dragging { opacity: 0.5; transform: scale(0.95); box-shadow: 0 10px 20px rgba(0,0,0,0.2); z-index: 100; }
 
 /* 子任务样式 */
@@ -84,6 +85,25 @@ body {
 .tag-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: rgba(0,122,255,0.1); color: var(--primary); }
 .tag-more { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .tag-more:hover { background: rgba(0,0,0,0.08); }
+
+/* 任务列表分区布局 */
+#view-tasks { overflow: hidden; display: flex; flex-direction: column; gap: 16px; }
+.task-board { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; min-height: 0; flex: 1; }
+.task-column { background: rgba(255,255,255,0.6); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; min-height: 0; border: 1px solid rgba(255,255,255,0.6); }
+.task-column-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.task-column-header.dim { opacity: 0.7; }
+.task-count { font-size: 0.8rem; color: #666; }
+.task-section { overflow-y: auto; padding-right: 4px; min-height: 0; }
+.task-section::-webkit-scrollbar { width: 6px; }
+.task-section::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 6px; }
+.task-group { padding: 6px 0 4px; }
+.task-group-title { font-size: 0.8rem; color: #555; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.task-group-count { background: rgba(0,0,0,0.08); border-radius: 999px; padding: 1px 6px; font-size: 0.7rem; color: #444; }
+.task-empty { opacity: 0.6; font-size: 0.85rem; padding: 6px 2px; }
+
+/* 待办箱固定区域 */
+#view-inbox { display: flex; flex-direction: column; overflow: hidden; }
+#list-inbox { flex: 1; overflow-y: auto; padding-right: 4px; min-height: 0; }
 
 /* 时间轴 (日视图) */
 .timeline-wrapper { position: relative; height: 1440px; margin-top: 10px; }
@@ -226,6 +246,9 @@ body {
     .search-bar:focus-within { width: auto; }
     .matrix-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); gap: 10px; }
     .desktop-only { display: none !important; }
+    #view-tasks { overflow-y: auto; }
+    .task-board { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+    .task-column { min-height: 200px; }
     /* 移动端周视图优化 */
     .week-grid { flex-direction: column; height: auto; overflow: visible; padding-bottom: 80px; }
     .week-col { flex-direction: row; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.05); min-height: 80px; }

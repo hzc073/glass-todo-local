@@ -120,10 +120,22 @@
 
         <!-- 视图: 列表 -->
         <div id="view-tasks" class="view-container active">
-            <h4 style="margin-bottom:10px">待办事项</h4>
-            <div id="list-todo"></div>
-            <h4 style="margin-bottom:10px; margin-top:20px; opacity:0.6">已完成</h4>
-            <div id="list-done"></div>
+            <div class="task-board">
+                <section class="task-column" id="todo-column">
+                    <div class="task-column-header">
+                        <h4>待办事项</h4>
+                        <span class="task-count" id="todo-count"></span>
+                    </div>
+                    <div id="list-todo" class="task-section"></div>
+                </section>
+                <section class="task-column" id="done-column">
+                    <div class="task-column-header dim">
+                        <h4>已完成</h4>
+                        <span class="task-count" id="done-count"></span>
+                    </div>
+                    <div id="list-done" class="task-section"></div>
+                </section>
+            </div>
 
             <!-- 移动端合并视图：待办箱 -->
             <div class="mobile-only" id="mobile-inbox-section">
