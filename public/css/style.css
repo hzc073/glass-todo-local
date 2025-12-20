@@ -196,6 +196,14 @@ body {
 .week-body { flex: 1; padding: 5px; overflow-y: auto; background: rgba(255,255,255,0.1); }
 .week-task-item { background: white; padding: 8px; border-radius: 6px; margin-bottom: 6px; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; gap: 6px; align-items: center; cursor: pointer; }
 .week-task-item.completed { opacity: 0.6; text-decoration: line-through; }
+.heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); gap: 4px; padding: 10px 0; }
+.heatmap-cell { width: 12px; height: 12px; border-radius: 3px; background: rgba(0,0,0,0.08); }
+.heatmap-cell.empty { background: transparent; }
+.heatmap-cell.level-1 { background: rgba(0,122,255,0.25); }
+.heatmap-cell.level-2 { background: rgba(0,122,255,0.45); }
+.heatmap-cell.level-3 { background: rgba(0,122,255,0.65); }
+.heatmap-cell.level-4 { background: rgba(0,122,255,0.85); }
+.heatmap-legend { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #666; }
 
 /* 月视图 */
 .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; overflow: hidden; }

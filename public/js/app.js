@@ -980,6 +980,30 @@ class TodoApp {
                 <div style="font-size:0.7rem; font-weight:bold;">${d.count}</div>
             </div>`).join('');
 
+        const completedByDate = {};
+        tasks.forEach(t => {
+            if (t.status !== 'completed' || !t.date) return;
+            completedByDate[t.date] = (completedByDate[t.date] || 0) + 1;
+        });
+        const today = new Date();
+        const startDate = new Date(today);
+        startDate.setDate(startDate.getDate() - 364);
+        const heatmapCells = [];
+        const startDow = (startDate.getDay() + 6) % 7;
+        for (let i = 0; i < startDow; i++) heatmapCells.push(null);
+        for (let i = 0; i < 365; i++) {
+            const d = new Date(startDate);
+            d.setDate(startDate.getDate() + i);
+            const dStr = this.formatDate(d);
+            const count = completedByDate[dStr] || 0;
+            const level = count === 0 ? 0 : count <= 1 ? 1 : count <= 2 ? 2 : count <= 4 ? 3 : 4;
+            heatmapCells.push({ date: dStr, count, level });
+        }
+        const heatmapHtml = heatmapCells.map(c => {
+            if (!c) return `<div class="heatmap-cell empty"></div>`;
+            return `<div class="heatmap-cell level-${c.level}" title="${c.date} 完成 ${c.count}"></div>`;
+        }).join('');
+
         document.getElementById('view-stats').innerHTML = `
             <div style="display:flex; flex-wrap:wrap; gap:20px;">
                 <div class="stats-card" style="flex:1; min-width:250px; text-align:center;">
@@ -999,6 +1023,19 @@ class TodoApp {
                         </div>
                     </div>
                     <div style="height:150px; display:flex; gap:5px; align-items:flex-end; padding-bottom:10px;">${barsHtml}</div>
+                </div>
+            </div>`;
+        document.getElementById('view-stats').innerHTML += `
+            <div class="stats-card" style="margin-top:20px;">
+                <h3>过去一年完成热力图</h3>
+                <div class="heatmap-grid">${heatmapHtml}</div>
+                <div class="heatmap-legend">
+                    <span>少</span>
+                    <div class="heatmap-cell level-1"></div>
+                    <div class="heatmap-cell level-2"></div>
+                    <div class="heatmap-cell level-3"></div>
+                    <div class="heatmap-cell level-4"></div>
+                    <span>多</span>
                 </div>
             </div>`;
     }
