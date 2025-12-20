@@ -865,12 +865,16 @@ class TodoApp {
         this.finishDrag();
         if (!t || t.deletedAt) return;
         let changed = false;
+        const todayStr = this.formatDate(new Date());
+        const wasInbox = this.isInboxTask(t);
         if (target === 'todo') {
             if (t.status === 'completed') { t.status = 'todo'; changed = true; }
             if (t.inbox) { t.inbox = false; changed = true; }
+            if (!t.date && wasInbox) { t.date = todayStr; changed = true; }
         } else if (target === 'done') {
             if (t.status !== 'completed') { t.status = 'completed'; changed = true; }
             if (t.inbox) { t.inbox = false; changed = true; }
+            if (!t.date && wasInbox) { t.date = todayStr; changed = true; }
             if (t.subtasks) {
                 const hadIncomplete = t.subtasks.some(s => !s.completed);
                 if (hadIncomplete) changed = true;
