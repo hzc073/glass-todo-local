@@ -236,6 +236,8 @@ body {
 /* Modal */
 #modal-overlay, #admin-modal, #export-modal-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; }
 .modal-box { background: rgba(255,255,255,0.95); padding: 25px; border-radius: 20px; width: 95%; max-width: 450px; box-shadow: 0 20px 50px rgba(0,0,0,0.2); max-height: 85vh; overflow-y: auto; }
+.modal-box { -ms-overflow-style: none; scrollbar-width: none; }
+.modal-box::-webkit-scrollbar { width: 0; height: 0; }
 .form-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #e0e0e0; background: white; font-size: 0.95rem; margin-bottom: 15px; }
 .form-label { font-size: 0.8rem; color: #666; margin-bottom: 4px; display: block; font-weight: 600; }
 .subtask-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
