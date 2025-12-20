@@ -218,6 +218,7 @@ body {
 .month-cell.holiday-off { background: rgba(52,199,89,0.06); }
 .month-cell.holiday-work { background: rgba(255,59,48,0.06); }
 .month-task-pill.completed { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: rgba(0,0,0,0.6); opacity: 0.7; }
+.month-task-pill .month-time { font-size: 0.65rem; opacity: 0.8; margin-right: 4px; }
 .month-cell-header { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .month-task-pill { font-size: 0.7rem; padding: 2px 4px; border-radius: 3px; background: var(--primary); color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; border: 1px solid rgba(0,0,0,0.05); }
 .month-task-pill .month-tag { color: rgba(255,255,255,0.9); margin-left: 4px; font-weight: 600; }

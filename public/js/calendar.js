@@ -268,8 +268,10 @@ export default class CalendarView {
             tasks.filter(t=>t.date===dStr).slice(0,4).forEach(t => {
                 const showTags = this.settings.showTags && t.tags && t.tags.length;
                 const tagText = showTags ? ` <span class="month-tag">#${t.tags[0]}</span>` : '';
+                const timeText = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
+                const timeHtml = timeText ? `<span class="month-time">${timeText}</span>` : '';
                 const qColor = this.app.getQuadrantColor(t.quadrant);
-                cell.innerHTML += `<div class="month-task-pill ${t.status}" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()">${t.title}${tagText}</div>`;
+                cell.innerHTML += `<div class="month-task-pill ${t.status}" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="app.handleMonthTaskClick(event, ${t.id})" ondblclick="app.handleMonthTaskDblClick(event, ${t.id})">${timeHtml}${t.title}${tagText}</div>`;
             });
             grid.appendChild(cell);
         }

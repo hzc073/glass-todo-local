@@ -31,6 +31,7 @@ class TodoApp {
         this.selectedTaskIds = new Set();
         this.longPressTimer = null;
         this.longPressStart = null;
+        this.monthClickTimer = null;
         this.undoState = null;
         this.undoTimer = null;
         this.isLoggingOut = false;
@@ -962,6 +963,23 @@ class TodoApp {
             this.saveData();
             this.render();
         }
+    }
+
+    handleMonthTaskClick(ev, id) {
+        ev.stopPropagation();
+        if (this.monthClickTimer) clearTimeout(this.monthClickTimer);
+        this.monthClickTimer = setTimeout(() => {
+            this.openModal(id);
+            this.monthClickTimer = null;
+        }, 220);
+    }
+    handleMonthTaskDblClick(ev, id) {
+        ev.stopPropagation();
+        if (this.monthClickTimer) {
+            clearTimeout(this.monthClickTimer);
+            this.monthClickTimer = null;
+        }
+        this.toggleTask(id);
     }
     
     renderStats(tasks = this.getFilteredData()) {
