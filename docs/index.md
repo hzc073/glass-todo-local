@@ -76,14 +76,14 @@ Glass Todo 使用指南
 
 6. 部署前端 (Pages)
 
-1.  登录 Cloudflare 控制台 → Compute (Workers & Pages) → Create Application。
-2. 选择 Pages 标签页 → Connect to Git。
+1.  登录 Cloudflare 控制台 → 计算和AI → Workers & Pages → Create Application。（右上角的加号）
+2. 选择 Pages （页面）标签页 → Connect to Git。
 3. 选择你 Fork 的 GitHub 仓库 Glass-Todo。
     1. 构建设置 (Build settings)：
-    2. Framework preset: 选择 None
-    3. Build command: 留空 (不要填)
-    4. Build output directory: 输入 public
-    5. 点击 Save and Deploy。
+    2. Framework preset（框架预设）: 选择 None
+    3. Build command（构建命令）: 留空 (不要填)
+    4. Build output directory（构建输出目录）: 输入 public
+    5. 点击 Save and Deploy（保存并部署）。
 
 几分钟后，你将获得一个 Pages 域名（如 https://xxx.pages.dev），访问即可使用！
 
