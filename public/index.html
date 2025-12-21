@@ -146,6 +146,11 @@
                     <div id="list-done" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'done')"></div>
                 </section>
             </div>
+            <div class="task-swipe-dots" aria-hidden="true">
+                <span class="task-swipe-dot active"></span>
+                <span class="task-swipe-dot"></span>
+                <span class="task-swipe-dot"></span>
+            </div>
 
         </div>
 
@@ -218,110 +223,117 @@
         </div>
 
         <!-- 视图: 番茄钟 -->
-        <div id="view-pomodoro" class="view-container">
-            <div class="pomodoro-layout">
-                <div class="stats-card pomodoro-panel">
-                    <div class="pomodoro-mode" id="pomodoro-mode-label" style="display:none;"></div>
-                    <div class="pomodoro-task-title" id="pomodoro-task-title" onclick="app.togglePomodoroTaskPicker()">未选择任务</div>
-                    <div class="pomodoro-task-picker" id="pomodoro-task-picker">
-                        <div class="pomodoro-task-list" id="pomodoro-task-list"></div>
-                    </div>
-                    <div class="pomodoro-progress" id="pomodoro-progress">
-                        <svg viewBox="0 0 400 400" aria-hidden="true">
-                            <g class="pomodoro-ticks" id="pomodoro-ticks"></g>
-                            <circle class="pomodoro-ring-bg" cx="200" cy="200" r="150"></circle>
-                            <circle class="pomodoro-ring" id="pomodoro-ring" cx="200" cy="200" r="150"></circle>
-                        </svg>
-                        <button class="pomodoro-action-btn" id="pomodoro-action-btn" type="button" aria-label="开始">
-                            <span class="pomodoro-action-icon" id="pomodoro-action-icon"></span>
-                        </button>
-                        <div class="pomodoro-timer work" id="pomodoro-time">
-                            <span id="pomodoro-time-text" onclick="app.openPomodoroSettings()">25:00</span>
+                        <div id="view-pomodoro" class="view-container">
+            <div class="pomodoro-swipe" aria-label="Pomodoro screens">
+                <section class="pomodoro-screen pomodoro-screen-timer">
+                    <div class="stats-card pomodoro-panel">
+                        <div class="pomodoro-mode" id="pomodoro-mode-label" style="display:none;"></div>
+                        <div class="pomodoro-task-title" id="pomodoro-task-title" onclick="app.togglePomodoroTaskPicker()">&#26410;&#36873;&#25321;&#20219;&#21153;</div>
+                        <div class="pomodoro-task-picker" id="pomodoro-task-picker">
+                            <div class="pomodoro-task-list" id="pomodoro-task-list"></div>
+                        </div>
+                        <div class="pomodoro-progress" id="pomodoro-progress">
+                            <svg viewBox="0 0 400 400" aria-hidden="true">
+                                <g class="pomodoro-ticks" id="pomodoro-ticks"></g>
+                                <circle class="pomodoro-ring-bg" cx="200" cy="200" r="150"></circle>
+                                <circle class="pomodoro-ring" id="pomodoro-ring" cx="200" cy="200" r="150"></circle>
+                            </svg>
+                            <button class="pomodoro-action-btn" id="pomodoro-action-btn" type="button" aria-label="&#24320;&#22987;">
+                                <span class="pomodoro-action-icon" id="pomodoro-action-icon"></span>
+                            </button>
+                            <div class="pomodoro-timer work" id="pomodoro-time">
+                                <span id="pomodoro-time-text" onclick="app.openPomodoroSettings()">25:00</span>
+                            </div>
+                        </div>
+                        <div class="pomodoro-cycle" id="pomodoro-cycle-label">&#24050;&#23436;&#25104; 0 &#20010;&#30058;&#33540;</div>
+                        <div class="pomodoro-controls">
+                            <button class="btn btn-secondary" onclick="app.resetPomodoro()">&#37325;&#32622;</button>
+                            <button class="btn btn-secondary" onclick="app.skipPomodoro()">&#36339;&#36807;</button>
                         </div>
                     </div>
-                    <div class="pomodoro-cycle" id="pomodoro-cycle-label">已完成 0 个番茄</div>
-                    <div class="pomodoro-controls">
-                        <button class="btn btn-secondary" onclick="app.resetPomodoro()">重置</button>
-                        <button class="btn btn-secondary" onclick="app.skipPomodoro()">跳过</button>
+                </section>
+                <section class="pomodoro-screen pomodoro-screen-dashboard">
+                    <div class="pomodoro-dashboard">
+                        <div class="pomodoro-stats-split">
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#20170;&#26085;&#30058;&#33540;</div>
+                                <div class="stats-metric-value" id="pomodoro-today-count">0</div>
+                            </div>
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#20170;&#26085;&#19987;&#27880; &#20998;&#38047;</div>
+                                <div class="stats-metric-value" id="pomodoro-today-minutes">0</div>
+                            </div>
+                        </div>
+                        <div class="pomodoro-stats-split">
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#24635;&#30058;&#33540;</div>
+                                <div class="stats-metric-value" id="pomodoro-total-count">0</div>
+                            </div>
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#24635;&#19987;&#27880;&#20998;&#38047;</div>
+                                <div class="stats-metric-value" id="pomodoro-total-minutes">0</div>
+                            </div>
+                        </div>
+                        <div class="stats-card pomodoro-history">
+                            <h4>&#26368;&#36817; 7 &#22825;</h4>
+                            <div id="pomodoro-recent-list"></div>
+                        </div>
+                        <div class="stats-card pomodoro-completed">
+                            <h4>&#23436;&#25104;&#21382;&#21490;</h4>
+                            <div id="pomodoro-completed-list"></div>
+                        </div>
                     </div>
-                </div>
-                <div class="pomodoro-dashboard">
-                    <div class="pomodoro-stats-split">
-                        <div class="pomodoro-stat-mini">
-                            <div class="stats-metric-title">今日番茄</div>
-                            <div class="stats-metric-value" id="pomodoro-today-count">0</div>
-                        </div>
-                        <div class="pomodoro-stat-mini">
-                            <div class="stats-metric-title">今日专注 分钟</div>
-                            <div class="stats-metric-value" id="pomodoro-today-minutes">0</div>
-                        </div>
+                </section>
+            </div>
+            <div class="pomodoro-swipe-dots" aria-hidden="true">
+                <span class="pomodoro-swipe-dot active"></span>
+                <span class="pomodoro-swipe-dot"></span>
+            </div>
+            <div id="pomodoro-settings-overlay">
+                <div class="modal-box pomodoro-settings">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4>&#26102;&#38388;&#35774;&#32622;</h4>
+                        <button class="btn-text" type="button" onclick="app.closePomodoroSettings()">&#10005;</button>
                     </div>
-                    <div class="pomodoro-stats-split">
-                        <div class="pomodoro-stat-mini">
-                            <div class="stats-metric-title">总番茄</div>
-                            <div class="stats-metric-value" id="pomodoro-total-count">0</div>
-                        </div>
-                        <div class="pomodoro-stat-mini">
-                            <div class="stats-metric-title">总专注 分钟</div>
-                            <div class="stats-metric-value" id="pomodoro-total-minutes">0</div>
-                        </div>
-                    </div>
-                    <div class="stats-card pomodoro-history">
-                        <h4>最近 7 天</h4>
-                        <div id="pomodoro-recent-list"></div>
-                    </div>
-                    <div class="stats-card pomodoro-completed">
-                        <h4>完成历史</h4>
-                        <div id="pomodoro-completed-list"></div>
-                    </div>
-                </div>
-                <div id="pomodoro-settings-overlay">
-                    <div class="modal-box pomodoro-settings">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <h4>时间设置</h4>
-                            <button class="btn-text" type="button" onclick="app.closePomodoroSettings()">✕</button>
-                        </div>
-                        <div class="pomodoro-setting-row">
-                            <label>专注(分钟)</label>
-                            <input type="number" id="pomodoro-work-min" class="form-input pomodoro-setting-input" min="1">
-                        </div>
-                        <div class="pomodoro-setting-row">
-                            <label>短休(分钟)</label>
-                            <input type="number" id="pomodoro-short-min" class="form-input pomodoro-setting-input" min="1">
-                        </div>
-                        <div class="pomodoro-setting-row">
-                            <label>长休(分钟)</label>
-                            <input type="number" id="pomodoro-long-min" class="form-input pomodoro-setting-input" min="1">
-                        </div>
                     <div class="pomodoro-setting-row">
-                        <label>长休间隔</label>
+                        <label>&#19987;&#27880;(&#20998;&#38047;)</label>
+                        <input type="number" id="pomodoro-work-min" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#30701;&#20241;(&#20998;&#38047;)</label>
+                        <input type="number" id="pomodoro-short-min" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#38271;&#20241;(&#20998;&#38047;)</label>
+                        <input type="number" id="pomodoro-long-min" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#38271;&#20241;&#38388;&#38548;</label>
                         <input type="number" id="pomodoro-long-every" class="form-input pomodoro-setting-input" min="1">
                     </div>
                     <div class="settings-toggle pomodoro-toggle">
-                        <span>自动开始下一段</span>
+                        <span>&#33258;&#21160;&#24320;&#22987;&#19979;&#19968;&#36718;</span>
                         <div class="toggle-switch" id="pomodoro-auto-switch"></div>
                     </div>
                     <div class="settings-toggle pomodoro-toggle">
-                        <span>自动开始休息</span>
+                        <span>&#33258;&#21160;&#24320;&#22987;&#20241;&#24687;</span>
                         <div class="toggle-switch" id="pomodoro-auto-break-switch"></div>
                     </div>
                     <div class="settings-toggle pomodoro-toggle">
-                        <span>自动开始专注</span>
+                        <span>&#33258;&#21160;&#24320;&#22987;&#19987;&#27880;</span>
                         <div class="toggle-switch" id="pomodoro-auto-work-switch"></div>
                     </div>
                     <div class="settings-toggle pomodoro-toggle">
-                        <span>番茄结束后自动完成任务</span>
+                        <span>&#30058;&#33540;&#32467;&#26463;&#21518;&#33258;&#21160;&#23436;&#25104;&#20219;&#21153;</span>
                         <div class="toggle-switch" id="pomodoro-auto-finish-switch"></div>
                     </div>
                     <div class="pomodoro-setting-actions">
-                        <button class="btn btn-sm" id="pomodoro-settings-confirm" type="button">确定</button>
+                        <button class="btn btn-sm" id="pomodoro-settings-confirm" type="button">&#30830;&#23450;</button>
                     </div>
-                </div>
                 </div>
             </div>
         </div>
-
-        <!-- 视图: 回收站 -->
+<!-- 视图: 回收站 -->
         <div id="view-recycle" class="view-container">
             <h4 style="margin-bottom:10px">回收站（7天自动清理）</h4>
             <div id="recycle-list"></div>
@@ -356,6 +368,10 @@
                 <div class="settings-toggle" data-key="matrix">
                     <span>四象限</span>
                     <div class="toggle-switch" id="switch-view-matrix"></div>
+                </div>
+                <div class="settings-toggle" data-key="pomodoro">
+                    <span>&#30058;&#33540;&#38047;</span>
+                    <div class="toggle-switch" id="switch-view-pomodoro"></div>
                 </div>
                 <div class="settings-toggle" data-key="auto-migrate">
                     <div class="settings-label">

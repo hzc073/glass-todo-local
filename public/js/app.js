@@ -48,6 +48,7 @@ class TodoApp {
         this.pomodoroTimerId = null;
         this.pomodoroAnimId = null;
         this.pomodoroUiBound = false;
+        this.pomodoroSwipeBound = false;
         this.pomodoroPressTimer = null;
         this.pomodoroLongPressTriggered = false;
 
@@ -56,8 +57,10 @@ class TodoApp {
         this.holidayLoading = {};
         this.viewSettings = JSON.parse(localStorage.getItem('glass_view_settings')) || {
             calendar: true,
-            matrix: true
+            matrix: true,
+            pomodoro: true
         };
+        if (typeof this.viewSettings.pomodoro !== 'boolean') this.viewSettings.pomodoro = true;
         this.calendarDefaultMode = this.normalizeCalendarMode(localStorage.getItem('glass_calendar_default_mode')) || 'day';
         this.autoMigrateEnabled = this.loadAutoMigrateSetting();
 
@@ -273,11 +276,16 @@ class TodoApp {
     isViewEnabled(v) {
         if (v === 'calendar') return !!this.viewSettings.calendar;
         if (v === 'matrix') return !!this.viewSettings.matrix;
+        if (v === 'pomodoro') return !!this.viewSettings.pomodoro;
         if (v === 'inbox') return false;
         return true;
     }
     applyViewSettings() {
-        const map = { calendar: this.viewSettings.calendar, matrix: this.viewSettings.matrix };
+        const map = {
+            calendar: this.viewSettings.calendar,
+            matrix: this.viewSettings.matrix,
+            pomodoro: this.viewSettings.pomodoro
+        };
         Object.keys(map).forEach(key => {
             const visible = !!map[key];
             document.querySelectorAll(`#sidebar .nav-item[data-view="${key}"], #mobile-tabbar .tab-item[data-view="${key}"]`)
@@ -310,7 +318,7 @@ class TodoApp {
     }
     toggleViewSetting(key) {
         if (key === 'auto-migrate') { this.toggleAutoMigrate(); return; }
-        if (!['calendar', 'matrix'].includes(key)) return;
+        if (!['calendar', 'matrix', 'pomodoro'].includes(key)) return;
         this.viewSettings[key] = !this.viewSettings[key];
         localStorage.setItem('glass_view_settings', JSON.stringify(this.viewSettings));
         this.syncViewSettingUI();
@@ -320,6 +328,7 @@ class TodoApp {
         const mapping = {
             calendar: 'switch-view-calendar',
             matrix: 'switch-view-matrix',
+            pomodoro: 'switch-view-pomodoro',
             'auto-migrate': 'switch-auto-migrate'
         };
         Object.entries(mapping).forEach(([key, id]) => {
@@ -542,12 +551,14 @@ class TodoApp {
         if (!this.isMobileViewport()) {
             board.style.transform = '';
             this.updateTaskColumnStates();
+            this.updateTaskSwipeIndicator();
             return;
         }
         const maxIndex = 2;
         this.mobileTaskIndex = Math.max(0, Math.min(maxIndex, this.mobileTaskIndex));
         board.style.transform = `translateX(-${this.mobileTaskIndex * 100}%)`;
         this.updateTaskColumnStates();
+        this.updateTaskSwipeIndicator();
     }
     setMobileTaskIndex(index) {
         const maxIndex = 2;
@@ -564,6 +575,15 @@ class TodoApp {
             return;
         }
         columns.forEach((col, idx) => col.classList.toggle('is-active', idx === this.mobileTaskIndex));
+    }
+    updateTaskSwipeIndicator() {
+        const dots = Array.from(document.querySelectorAll('.task-swipe-dot'));
+        if (!dots.length) return;
+        if (!this.isMobileViewport()) {
+            dots.forEach(dot => dot.classList.remove('active'));
+            return;
+        }
+        dots.forEach((dot, idx) => dot.classList.toggle('active', idx === this.mobileTaskIndex));
     }
     setupCalendarSwipe() {
         const container = document.getElementById('view-calendar');
@@ -1946,7 +1966,42 @@ class TodoApp {
             if (picker.contains(e.target) || title.contains(e.target)) return;
             picker.classList.remove('open');
         });
+        this.bindPomodoroSwipe();
         this.pomodoroUiBound = true;
+    }
+    bindPomodoroSwipe() {
+        if (this.pomodoroSwipeBound) return;
+        const swipe = document.querySelector('.pomodoro-swipe');
+        const dots = Array.from(document.querySelectorAll('.pomodoro-swipe-dot'));
+        if (!swipe || dots.length === 0) {
+            this.pomodoroSwipeBound = true;
+            return;
+        }
+        const update = () => this.updatePomodoroSwipeIndicator();
+        let rafId = null;
+        swipe.addEventListener('scroll', () => {
+            if (rafId) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                update();
+            });
+        });
+        dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                swipe.scrollTo({ left: swipe.clientWidth * index, behavior: 'smooth' });
+            });
+        });
+        update();
+        this.pomodoroSwipeBound = true;
+    }
+    updatePomodoroSwipeIndicator() {
+        const swipe = document.querySelector('.pomodoro-swipe');
+        const dots = Array.from(document.querySelectorAll('.pomodoro-swipe-dot'));
+        if (!swipe || dots.length === 0) return;
+        const width = swipe.clientWidth || 1;
+        const index = Math.round(swipe.scrollLeft / width);
+        const safeIndex = Math.min(dots.length - 1, Math.max(0, index));
+        dots.forEach((dot, i) => dot.classList.toggle('active', i === safeIndex));
     }
     pomodoroTick() {
         if (!this.pomodoroState?.isRunning) return;
@@ -2372,6 +2427,7 @@ class TodoApp {
         }
 
         this.updatePomodoroDisplay();
+        this.updatePomodoroSwipeIndicator();
     }
 
     handleSearch(val) { this.filter.query = val; if(val && this.view!=='search') this.switchView('search'); this.render(); }
