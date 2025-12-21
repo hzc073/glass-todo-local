@@ -23,6 +23,10 @@ body {
 .btn-text { background: transparent; color: var(--primary); border: none; cursor: pointer; padding: 0; }
 .btn-icon { background: rgba(0,0,0,0.05); border: none; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
 .btn-icon:active { transform: scale(0.96); }
+.trash-drop.is-drag-over {
+    background: rgba(220, 20, 60, 0.12);
+    box-shadow: 0 0 0 2px rgba(220, 20, 60, 0.2);
+}
 
 /* 布局 */
 #sidebar { width: 240px; background: var(--glass-sidebar); backdrop-filter: var(--blur); padding: 20px 10px; display: flex; flex-direction: column; gap: 5px; color: var(--text-light); z-index: 100; border-right: var(--glass-border); }

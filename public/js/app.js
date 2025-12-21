@@ -1398,6 +1398,42 @@ class TodoApp {
         ev.dataTransfer.effectAllowed = 'move';
         ev.target.classList.add('dragging'); 
     }
+    handleTrashDragOver(ev) {
+        if (!this.dragActive) return;
+        ev.preventDefault();
+        const btn = document.getElementById('trash-drop');
+        if (btn) btn.classList.add('is-drag-over');
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    }
+    handleTrashDragLeave() {
+        const btn = document.getElementById('trash-drop');
+        if (btn) btn.classList.remove('is-drag-over');
+    }
+    async dropOnTrash(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const btn = document.getElementById('trash-drop');
+        if (btn) btn.classList.remove('is-drag-over');
+        const id = parseInt(ev.dataTransfer.getData("text"));
+        const t = this.data.find(i => i.id === id);
+        this.finishDrag();
+        if (!t || t.deletedAt) return;
+        let deleteAttachments = false;
+        const attachments = Array.isArray(t.attachments) ? t.attachments : [];
+        if (attachments.length) {
+            deleteAttachments = confirm(`删除任务将同时删除 ${attachments.length} 个附件，是否继续？`);
+            if (!deleteAttachments) return;
+        }
+        this.queueUndo('已删除任务');
+        t.deletedAt = Date.now();
+        if (deleteAttachments) {
+            await this.deleteTaskAttachments(t);
+        }
+        this.saveData();
+        this.render();
+        this.renderTags();
+        this.showToast('已移动到回收站');
+    }
     drop(ev, quadrantId) {
         ev.preventDefault();
         const id = parseInt(ev.dataTransfer.getData("text"));
@@ -2881,6 +2917,37 @@ class TodoApp {
             URL.revokeObjectURL(url);
         } catch (e) {
             this.showToast('下载失败');
+        }
+    }
+
+    async deleteTaskAttachments(task) {
+        if (!task || !Array.isArray(task.attachments) || task.attachments.length === 0) return;
+        const attachments = task.attachments.slice();
+        const pendingIds = attachments.map((a) => a && a.id).filter(Boolean);
+        pendingIds.forEach((id) => {
+            const pending = this.pendingAttachmentDeletes.get(id);
+            if (pending) {
+                if (pending.timerId) clearTimeout(pending.timerId);
+                if (pending.toastEl) pending.toastEl.remove();
+                this.pendingAttachmentDeletes.delete(id);
+            }
+        });
+        task.attachments = [];
+        if (api.isLocalMode()) return;
+        let failed = 0;
+        for (const att of attachments) {
+            if (!att || !att.id) continue;
+            try {
+                const res = await api.deleteAttachment(task.id, att.id);
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || '删除失败');
+                if (json.version) this.dataVersion = json.version;
+            } catch (e) {
+                failed += 1;
+            }
+        }
+        if (failed) {
+            this.showToast(`有 ${failed} 个附件删除失败`);
         }
     }
 

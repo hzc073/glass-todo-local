@@ -110,7 +110,7 @@
             <div style="display:flex; gap:10px; align-items:center;">
                 <span id="date-display" class="desktop-only" style="font-weight:600; color:#555;">Today</span>
                 <span id="lunar-display" class="desktop-only" style="font-size:0.75rem; color:#888;"></span>
-                <button class="btn-icon" title="回收站" onclick="app.switchView('recycle')">🗑️</button>
+                <button id="trash-drop" class="btn-icon trash-drop" title="回收站" onclick="app.switchView('recycle')" ondragover="app.handleTrashDragOver(event)" ondragleave="app.handleTrashDragLeave(event)" ondrop="app.dropOnTrash(event)">🗑️</button>
                 <button class="btn btn-sm" onclick="app.openModal()">+ 新建</button>
             </div>
         </div>
