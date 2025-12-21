@@ -1,4 +1,4 @@
-const CACHE_NAME = 'glass-todo-cache-v1';
+const CACHE_NAME = 'glass-todo-cache-v2';
 const ASSETS = [
   './',
   './index.html',

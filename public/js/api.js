@@ -134,6 +134,15 @@ const api = {
     async pushSubscribe(subscription) { return (await this.request('/api/push/subscribe', 'POST', { subscription })).json(); },
     async pushUnsubscribe(endpoint) { return (await this.request('/api/push/unsubscribe', 'POST', { endpoint })).json(); },
     async pushTest() { return (await this.request('/api/push/test', 'POST')).json(); }
+    ,
+    // Pomodoro APIs
+    async pomodoroGetSettings() { return (await this.request('/api/pomodoro/settings')).json(); },
+    async pomodoroSaveSettings(settings) { return (await this.request('/api/pomodoro/settings', 'POST', settings)).json(); },
+    async pomodoroGetState() { return (await this.request('/api/pomodoro/state')).json(); },
+    async pomodoroSaveState(state) { return (await this.request('/api/pomodoro/state', 'POST', state)).json(); },
+    async pomodoroGetSessions(limit = 50) { return (await this.request(`/api/pomodoro/sessions?limit=${limit}`)).json(); },
+    async pomodoroGetSummary(days = 7) { return (await this.request(`/api/pomodoro/summary?days=${days}`)).json(); },
+    async pomodoroSaveSession(session) { return (await this.request('/api/pomodoro/sessions', 'POST', session)).json(); }
 };
 
 export default api;

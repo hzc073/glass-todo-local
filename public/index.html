@@ -70,6 +70,7 @@
         <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span>📝</span> 任务列表</div>
         <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span>📅</span> 日历视图</div>
         <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span>💠</span> 四象限</div>
+        <div class="nav-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><span>🍅</span> 番茄钟</div>
         
         <div class="nav-section">标签筛选</div>
         <div id="tag-filter-list"></div>
@@ -85,6 +86,7 @@
         <div class="tab-item active" data-view="tasks" onclick="app.switchView('tasks')"><div>📝</div><div style="font-size:0.6rem">列表</div></div>
         <div class="tab-item" data-view="calendar" onclick="app.switchView('calendar')"><div>📅</div><div style="font-size:0.6rem">日历</div></div>
         <div class="tab-item" data-view="matrix" onclick="app.switchView('matrix')"><div>💠</div><div style="font-size:0.6rem">象限</div></div>
+        <div class="tab-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><div>🍅</div><div style="font-size:0.6rem">番茄</div></div>
         <div class="tab-item" data-view="stats" onclick="app.switchView('stats')"><div>📊</div><div style="font-size:0.6rem">统计</div></div>
         <div class="tab-item" data-view="settings" onclick="app.switchView('settings')"><div>⚙️</div><div style="font-size:0.6rem">设置</div></div>
         <div class="tab-item" data-view="recycle" onclick="app.switchView('recycle')"><div>🗑️</div><div style="font-size:0.6rem">回收站</div></div>
@@ -212,6 +214,110 @@
                 <h3>📊 效率概览</h3>
                 <div style="font-size:3rem; font-weight:bold; color:var(--primary); text-align:center; margin:20px 0;" id="completion-rate">0%</div>
                 <p style="text-align:center; color:#666;">本周完成率</p>
+            </div>
+        </div>
+
+        <!-- 视图: 番茄钟 -->
+        <div id="view-pomodoro" class="view-container">
+            <div class="pomodoro-layout">
+                <div class="stats-card pomodoro-panel">
+                    <div class="pomodoro-mode" id="pomodoro-mode-label" style="display:none;"></div>
+                    <div class="pomodoro-task-title" id="pomodoro-task-title" onclick="app.togglePomodoroTaskPicker()">未选择任务</div>
+                    <div class="pomodoro-task-picker" id="pomodoro-task-picker">
+                        <div class="pomodoro-task-list" id="pomodoro-task-list"></div>
+                    </div>
+                    <div class="pomodoro-progress" id="pomodoro-progress">
+                        <svg viewBox="0 0 400 400" aria-hidden="true">
+                            <g class="pomodoro-ticks" id="pomodoro-ticks"></g>
+                            <circle class="pomodoro-ring-bg" cx="200" cy="200" r="150"></circle>
+                            <circle class="pomodoro-ring" id="pomodoro-ring" cx="200" cy="200" r="150"></circle>
+                        </svg>
+                        <button class="pomodoro-action-btn" id="pomodoro-action-btn" type="button" aria-label="开始">
+                            <span class="pomodoro-action-icon" id="pomodoro-action-icon"></span>
+                        </button>
+                        <div class="pomodoro-timer work" id="pomodoro-time">
+                            <span id="pomodoro-time-text" onclick="app.openPomodoroSettings()">25:00</span>
+                        </div>
+                    </div>
+                    <div class="pomodoro-cycle" id="pomodoro-cycle-label">已完成 0 个番茄</div>
+                    <div class="pomodoro-controls">
+                        <button class="btn btn-secondary" onclick="app.resetPomodoro()">重置</button>
+                        <button class="btn btn-secondary" onclick="app.skipPomodoro()">跳过</button>
+                    </div>
+                </div>
+                <div class="pomodoro-dashboard">
+                    <div class="pomodoro-stats-split">
+                        <div class="pomodoro-stat-mini">
+                            <div class="stats-metric-title">今日番茄</div>
+                            <div class="stats-metric-value" id="pomodoro-today-count">0</div>
+                        </div>
+                        <div class="pomodoro-stat-mini">
+                            <div class="stats-metric-title">今日专注 分钟</div>
+                            <div class="stats-metric-value" id="pomodoro-today-minutes">0</div>
+                        </div>
+                    </div>
+                    <div class="pomodoro-stats-split">
+                        <div class="pomodoro-stat-mini">
+                            <div class="stats-metric-title">总番茄</div>
+                            <div class="stats-metric-value" id="pomodoro-total-count">0</div>
+                        </div>
+                        <div class="pomodoro-stat-mini">
+                            <div class="stats-metric-title">总专注 分钟</div>
+                            <div class="stats-metric-value" id="pomodoro-total-minutes">0</div>
+                        </div>
+                    </div>
+                    <div class="stats-card pomodoro-history">
+                        <h4>最近 7 天</h4>
+                        <div id="pomodoro-recent-list"></div>
+                    </div>
+                    <div class="stats-card pomodoro-completed">
+                        <h4>完成历史</h4>
+                        <div id="pomodoro-completed-list"></div>
+                    </div>
+                </div>
+                <div id="pomodoro-settings-overlay">
+                    <div class="modal-box pomodoro-settings">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <h4>时间设置</h4>
+                            <button class="btn-text" type="button" onclick="app.closePomodoroSettings()">✕</button>
+                        </div>
+                        <div class="pomodoro-setting-row">
+                            <label>专注(分钟)</label>
+                            <input type="number" id="pomodoro-work-min" class="form-input pomodoro-setting-input" min="1">
+                        </div>
+                        <div class="pomodoro-setting-row">
+                            <label>短休(分钟)</label>
+                            <input type="number" id="pomodoro-short-min" class="form-input pomodoro-setting-input" min="1">
+                        </div>
+                        <div class="pomodoro-setting-row">
+                            <label>长休(分钟)</label>
+                            <input type="number" id="pomodoro-long-min" class="form-input pomodoro-setting-input" min="1">
+                        </div>
+                    <div class="pomodoro-setting-row">
+                        <label>长休间隔</label>
+                        <input type="number" id="pomodoro-long-every" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>自动开始下一段</span>
+                        <div class="toggle-switch" id="pomodoro-auto-switch"></div>
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>自动开始休息</span>
+                        <div class="toggle-switch" id="pomodoro-auto-break-switch"></div>
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>自动开始专注</span>
+                        <div class="toggle-switch" id="pomodoro-auto-work-switch"></div>
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>番茄结束后自动完成任务</span>
+                        <div class="toggle-switch" id="pomodoro-auto-finish-switch"></div>
+                    </div>
+                    <div class="pomodoro-setting-actions">
+                        <button class="btn btn-sm" id="pomodoro-settings-confirm" type="button">确定</button>
+                    </div>
+                </div>
+                </div>
             </div>
         </div>
 

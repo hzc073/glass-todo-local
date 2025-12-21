@@ -42,6 +42,15 @@ class TodoApp {
         this.pushEnabled = localStorage.getItem('glass_push_enabled') === 'true';
         this.pushSubscription = null;
         this.swRegistrationPromise = null;
+        this.pomodoroSettings = this.getPomodoroDefaults();
+        this.pomodoroState = this.getPomodoroStateDefaults();
+        this.pomodoroHistory = this.getPomodoroHistoryDefaults();
+        this.pomodoroTimerId = null;
+        this.pomodoroAnimId = null;
+        this.pomodoroUiBound = false;
+        this.pomodoroPressTimer = null;
+        this.pomodoroLongPressTriggered = false;
+
 
         this.holidaysByYear = {};
         this.holidayLoading = {};
@@ -85,6 +94,8 @@ class TodoApp {
         this.initPushControls();
         this.syncAutoMigrateUI();
         this.initMobileSwipes();
+        await this.initPomodoro();
+        this.initLoginEnter();
         if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
         
         setInterval(() => { if (!document.hidden) this.loadData(); }, 30000);
@@ -121,6 +132,7 @@ class TodoApp {
                 document.getElementById('current-user').innerText = u;
                 await this.loadData();
                 await this.syncPushSubscription();
+                await this.initPomodoro();
             } else {
                 if(result.needInvite) {
                     document.getElementById('invite-field').style.display = 'block';
@@ -128,6 +140,19 @@ class TodoApp {
                 } else alert("登录失败: " + result.error);
             }
         } catch(e) { console.error(e); alert("网络错误"); }
+    }
+    initLoginEnter() {
+        const userInput = document.getElementById('login-user');
+        const pwdInput = document.getElementById('login-pwd');
+        const inviteInput = document.getElementById('login-invite');
+        const handler = (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            this.login();
+        };
+        [userInput, pwdInput, inviteInput].forEach((el) => {
+            if (el) el.addEventListener('keydown', handler);
+        });
     }
     logout() { this.handleUnauthorized(true); }
     handleUnauthorized(fromLogout = false) {
@@ -261,7 +286,7 @@ class TodoApp {
         if (!this.isViewEnabled(this.view)) this.switchView('tasks');
     }
     initViewSettingsControls() {
-        document.querySelectorAll('.settings-toggle').forEach(item => {
+        document.querySelectorAll('.settings-toggle[data-key]').forEach(item => {
             item.onclick = () => this.toggleViewSetting(item.dataset.key);
         });
         this.syncViewSettingUI();
@@ -645,6 +670,9 @@ class TodoApp {
         if (this.view === 'stats') {
              this.renderStats(allTasks);
         }
+        if (this.view === 'pomodoro') {
+            this.renderPomodoro();
+        }
         if (this.view === 'recycle') {
             this.renderRecycle(deletedTasks);
         }
@@ -771,6 +799,8 @@ class TodoApp {
     createCardHtml(t) {
         const qColor = this.getQuadrantColor(t.quadrant);
         const tags = (t.tags||[]).map(tag => `<span class="tag-pill">#${tag}</span>`).join(' ');
+        const pomodoroCount = Number(t.pomodoros || 0);
+        const pomodoroHtml = pomodoroCount ? `<span class="pomodoro-pill">🍅 ${pomodoroCount}</span>` : '';
         const isSelected = this.selectedTaskIds.has(t.id);
         const dateText = this.isInboxTask(t) ? '待办箱' : (t.date || '未设日期');
         const isInbox = this.isInboxTask(t);
@@ -805,7 +835,7 @@ class TodoApp {
                 <div style="flex:1">
                     <div class="task-title">${t.title}</div>
                     <div style="font-size:0.75rem; color:#666; margin-top:2px;">📅 ${dateText}</div>
-                    <div style="margin-top:4px;">${tags}</div>
+                    <div style="margin-top:4px;">${pomodoroHtml}${tags}</div>
                     ${t.start ? `<div style="font-size:0.75rem; color:var(--primary)">⏰ ${t.start}</div>` : ''}
                     ${subHtml}
                 </div>
@@ -1009,6 +1039,7 @@ class TodoApp {
             end: isInbox ? '' : endVal,
             quadrant: document.getElementById('task-quadrant').value,
             tags: document.getElementById('task-tags').value.split(/[,，]/).map(t => t.trim()).filter(t => t),
+            pomodoros: prevItem?.pomodoros || 0,
             subtasks, status,
             inbox: isInbox,
             completedAt,
@@ -1620,6 +1651,729 @@ class TodoApp {
         });
         return changed;
     }
+    // --- Pomodoro ---
+    getPomodoroDefaults() {
+        return {
+            workMin: 25,
+            shortBreakMin: 5,
+            longBreakMin: 15,
+            longBreakEvery: 4,
+            autoStartNext: false,
+            autoStartBreak: false,
+            autoStartWork: false,
+            autoFinishTask: false
+        };
+    }
+    getPomodoroStateDefaults() {
+        return {
+            mode: 'work',
+            remainingMs: 25 * 60 * 1000,
+            isRunning: false,
+            cycleCount: 0,
+            currentTaskId: null,
+            targetEnd: null
+        };
+    }
+    getPomodoroHistoryDefaults() {
+        return { totalWorkSessions: 0, totalWorkMinutes: 0, totalBreakMinutes: 0, days: {}, sessions: [] };
+    }
+    loadPomodoroSettings() {
+        const defaults = this.getPomodoroDefaults();
+        try {
+            const raw = localStorage.getItem('glass_pomodoro_settings');
+            const parsed = raw ? JSON.parse(raw) : {};
+            const merged = { ...defaults, ...parsed };
+            if (typeof merged.autoStartBreak !== 'boolean' || typeof merged.autoStartWork !== 'boolean') {
+                const fallback = !!merged.autoStartNext;
+                merged.autoStartBreak = fallback;
+                merged.autoStartWork = fallback;
+            }
+            return merged;
+        } catch (e) {
+            return defaults;
+        }
+    }
+    savePomodoroSettings() {
+        if (api.isLocalMode() || !api.auth) {
+            localStorage.setItem('glass_pomodoro_settings', JSON.stringify(this.pomodoroSettings));
+            return;
+        }
+        const payload = {
+            workMin: this.pomodoroSettings.workMin,
+            shortBreakMin: this.pomodoroSettings.shortBreakMin,
+            longBreakMin: this.pomodoroSettings.longBreakMin,
+            longBreakEvery: this.pomodoroSettings.longBreakEvery,
+            autoStartNext: this.pomodoroSettings.autoStartNext,
+            autoStartBreak: this.pomodoroSettings.autoStartBreak,
+            autoStartWork: this.pomodoroSettings.autoStartWork,
+            autoFinishTask: this.pomodoroSettings.autoFinishTask
+        };
+        api.pomodoroSaveSettings(payload).catch(() => {});
+    }
+    loadPomodoroState() {
+        const defaults = this.getPomodoroStateDefaults();
+        try {
+            const raw = localStorage.getItem('glass_pomodoro_state');
+            const parsed = raw ? JSON.parse(raw) : {};
+            return { ...defaults, ...parsed };
+        } catch (e) {
+            return defaults;
+        }
+    }
+    savePomodoroState() {
+        const state = {
+            ...this.pomodoroState,
+            remainingMs: Math.max(0, Math.floor(this.pomodoroState.remainingMs || 0))
+        };
+        if (api.isLocalMode() || !api.auth) {
+            localStorage.setItem('glass_pomodoro_state', JSON.stringify(state));
+            return;
+        }
+        const payload = {
+            mode: state.mode,
+            remainingMs: state.remainingMs,
+            isRunning: state.isRunning,
+            targetEnd: state.targetEnd,
+            cycleCount: state.cycleCount,
+            currentTaskId: state.currentTaskId
+        };
+        api.pomodoroSaveState(payload).catch(() => {});
+    }
+    loadPomodoroHistory() {
+        const defaults = this.getPomodoroHistoryDefaults();
+        try {
+            const raw = localStorage.getItem('glass_pomodoro_history');
+            const parsed = raw ? JSON.parse(raw) : {};
+            return { ...defaults, ...parsed, days: parsed?.days || {}, sessions: parsed?.sessions || [] };
+        } catch (e) {
+            return defaults;
+        }
+    }
+    savePomodoroHistory() {
+        if (api.isLocalMode() || !api.auth) {
+            localStorage.setItem('glass_pomodoro_history', JSON.stringify(this.pomodoroHistory));
+        }
+    }
+    async loadPomodoroSettingsFromServer() {
+        const defaults = this.getPomodoroDefaults();
+        if (!api.auth || api.isLocalMode()) return defaults;
+        try {
+            const json = await api.pomodoroGetSettings();
+            const settings = json?.settings || {};
+            const merged = { ...defaults, ...settings };
+            if (typeof merged.autoStartBreak !== 'boolean' || typeof merged.autoStartWork !== 'boolean') {
+                const fallback = !!merged.autoStartNext;
+                merged.autoStartBreak = fallback;
+                merged.autoStartWork = fallback;
+            }
+            return merged;
+        } catch (e) {
+            return defaults;
+        }
+    }
+    async loadPomodoroStateFromServer() {
+        const defaults = this.getPomodoroStateDefaults();
+        if (!api.auth || api.isLocalMode()) return defaults;
+        try {
+            const json = await api.pomodoroGetState();
+            const state = json?.state;
+            return state ? { ...defaults, ...state } : defaults;
+        } catch (e) {
+            return defaults;
+        }
+    }
+    async loadPomodoroHistoryFromServer() {
+        const defaults = this.getPomodoroHistoryDefaults();
+        if (!api.auth || api.isLocalMode()) return defaults;
+        try {
+            const [summaryJson, sessionsJson] = await Promise.all([
+                api.pomodoroGetSummary(7),
+                api.pomodoroGetSessions(50)
+            ]);
+            const sessions = Array.isArray(sessionsJson?.sessions) ? sessionsJson.sessions : [];
+            return this.buildPomodoroHistoryFromSummary(summaryJson, sessions);
+        } catch (e) {
+            return defaults;
+        }
+    }
+    buildPomodoroHistoryFromSummary(summary = {}, sessions = []) {
+        const history = this.getPomodoroHistoryDefaults();
+        const byDay = summary?.days && typeof summary.days === 'object' ? summary.days : {};
+        const sessionLabels = [];
+        sessions.forEach((row) => {
+            const endedAt = Number(row.ended_at || row.endedAt || 0);
+            if (!endedAt) return;
+            const dateKey = this.formatDate(new Date(endedAt));
+            const timeLabel = new Date(endedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            const title = row.task_title || row.taskTitle || '专注';
+            const label = `${title} (${timeLabel})`;
+            sessionLabels.push(`${dateKey} | ${label}`);
+        });
+        const totals = summary?.totals || {};
+        history.totalWorkSessions = totals.totalWorkSessions || 0;
+        history.totalWorkMinutes = totals.totalWorkMinutes || 0;
+        history.totalBreakMinutes = totals.totalBreakMinutes || 0;
+        history.days = byDay;
+        history.sessions = sessionLabels;
+        return history;
+    }
+    getPomodoroDuration(mode) {
+        const settings = this.pomodoroSettings || this.getPomodoroDefaults();
+        if (mode === 'short') return settings.shortBreakMin * 60 * 1000;
+        if (mode === 'long') return settings.longBreakMin * 60 * 1000;
+        return settings.workMin * 60 * 1000;
+    }
+    async initPomodoro() {
+        if (!api.auth && !api.isLocalMode()) {
+            this.pomodoroSettings = this.getPomodoroDefaults();
+            this.pomodoroHistory = this.getPomodoroHistoryDefaults();
+            this.pomodoroState = this.getPomodoroStateDefaults();
+        } else if (api.isLocalMode()) {
+            this.pomodoroSettings = this.loadPomodoroSettings();
+            this.pomodoroHistory = this.loadPomodoroHistory();
+            this.pomodoroState = this.loadPomodoroState();
+        } else {
+            this.pomodoroSettings = await this.loadPomodoroSettingsFromServer();
+            this.pomodoroHistory = await this.loadPomodoroHistoryFromServer();
+            this.pomodoroState = await this.loadPomodoroStateFromServer();
+        }
+        this.initPomodoroTicks();
+        if (!['work', 'short', 'long'].includes(this.pomodoroState.mode)) {
+            this.pomodoroState.mode = 'work';
+        }
+        const duration = this.getPomodoroDuration(this.pomodoroState.mode);
+        if (!Number.isFinite(this.pomodoroState.remainingMs) || this.pomodoroState.remainingMs <= 0 || this.pomodoroState.remainingMs > duration) {
+            this.pomodoroState.remainingMs = duration;
+        }
+        if (this.pomodoroState.isRunning) {
+            if (typeof this.pomodoroState.targetEnd !== 'number') {
+                this.pomodoroState.isRunning = false;
+                this.pomodoroState.targetEnd = null;
+            } else {
+                const remaining = this.pomodoroState.targetEnd - Date.now();
+                if (remaining <= 0) {
+                    this.pomodoroState.remainingMs = 0;
+                    this.pomodoroState.isRunning = false;
+                    this.pomodoroState.targetEnd = null;
+                    this.finishPomodoroSession(true);
+                } else {
+                    this.pomodoroState.remainingMs = remaining;
+                }
+            }
+        }
+        this.savePomodoroState();
+        if (this.pomodoroTimerId) clearInterval(this.pomodoroTimerId);
+        this.pomodoroTimerId = setInterval(() => this.pomodoroTick(), 1000);
+        this.startPomodoroAnimation();
+        this.bindPomodoroUI();
+        this.renderPomodoro();
+    }
+    startPomodoroAnimation() {
+        if (this.pomodoroAnimId) return;
+        const step = () => {
+            if (this.view === 'pomodoro') this.updatePomodoroDisplay();
+            this.pomodoroAnimId = requestAnimationFrame(step);
+        };
+        this.pomodoroAnimId = requestAnimationFrame(step);
+    }
+    bindPomodoroUI() {
+        if (this.pomodoroUiBound) return;
+        const actionBtn = document.getElementById('pomodoro-action-btn');
+        const confirmBtn = document.getElementById('pomodoro-settings-confirm');
+        const settingsOverlay = document.getElementById('pomodoro-settings-overlay');
+        const autoStartRow = document.getElementById('pomodoro-auto-switch')?.closest('.settings-toggle');
+        const autoBreakRow = document.getElementById('pomodoro-auto-break-switch')?.closest('.settings-toggle');
+        const autoWorkRow = document.getElementById('pomodoro-auto-work-switch')?.closest('.settings-toggle');
+        const autoFinishRow = document.getElementById('pomodoro-auto-finish-switch')?.closest('.settings-toggle');
+        if (actionBtn) {
+            const clearPress = () => {
+                if (this.pomodoroPressTimer) {
+                    clearTimeout(this.pomodoroPressTimer);
+                    this.pomodoroPressTimer = null;
+                }
+            };
+            actionBtn.addEventListener('pointerdown', () => {
+                if (!this.pomodoroState.isRunning) return;
+                clearPress();
+                this.pomodoroLongPressTriggered = false;
+                this.pomodoroPressTimer = setTimeout(() => {
+                    this.pomodoroLongPressTriggered = true;
+                    const ok = confirm('停止计时将丢失本次番茄，确认停止？');
+                    if (ok) {
+                        this.resetPomodoro();
+                        this.showToast('已停止番茄钟');
+                    }
+                }, 700);
+            });
+            actionBtn.addEventListener('pointerup', clearPress);
+            actionBtn.addEventListener('pointerleave', clearPress);
+            actionBtn.addEventListener('pointercancel', clearPress);
+            actionBtn.addEventListener('click', () => {
+                if (this.pomodoroLongPressTriggered) {
+                    this.pomodoroLongPressTriggered = false;
+                    return;
+                }
+                this.togglePomodoroRun();
+            });
+        }
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', () => {
+                this.updatePomodoroSettingsFromUI();
+                this.closePomodoroSettings();
+            });
+        }
+        if (settingsOverlay) {
+            settingsOverlay.addEventListener('click', (e) => {
+                if (e.target === settingsOverlay) this.closePomodoroSettings();
+            });
+        }
+        if (autoStartRow) {
+            autoStartRow.addEventListener('click', () => this.togglePomodoroAutoStart());
+        }
+        if (autoBreakRow) {
+            autoBreakRow.addEventListener('click', () => this.togglePomodoroAutoStartBreak());
+        }
+        if (autoWorkRow) {
+            autoWorkRow.addEventListener('click', () => this.togglePomodoroAutoStartWork());
+        }
+        if (autoFinishRow) {
+            autoFinishRow.addEventListener('click', () => this.togglePomodoroAutoFinishTask());
+        }
+        document.addEventListener('click', (e) => {
+            const picker = document.getElementById('pomodoro-task-picker');
+            const title = document.getElementById('pomodoro-task-title');
+            if (!picker || !title) return;
+            if (picker.contains(e.target) || title.contains(e.target)) return;
+            picker.classList.remove('open');
+        });
+        this.pomodoroUiBound = true;
+    }
+    pomodoroTick() {
+        if (!this.pomodoroState?.isRunning) return;
+        const remaining = this.pomodoroState.targetEnd - Date.now();
+        if (remaining <= 0) {
+            this.finishPomodoroSession(true);
+            return;
+        }
+        this.pomodoroState.remainingMs = remaining;
+        this.savePomodoroState();
+        this.updatePomodoroDisplay();
+    }
+    getPomodoroRemainingMs() {
+        if (this.pomodoroState?.isRunning && typeof this.pomodoroState.targetEnd === 'number') {
+            return Math.max(0, this.pomodoroState.targetEnd - Date.now());
+        }
+        return Math.max(0, this.pomodoroState?.remainingMs || 0);
+    }
+    isPomodoroTaskLocked() {
+        if (this.pomodoroState?.mode !== 'work') return false;
+        const duration = this.getPomodoroDuration('work');
+        const remaining = this.getPomodoroRemainingMs();
+        return remaining < duration;
+    }
+    togglePomodoroRun() {
+        if (this.pomodoroState.isRunning) {
+            this.pausePomodoro();
+        } else {
+            this.startPomodoro();
+        }
+    }
+    startPomodoro() {
+        if (this.pomodoroState.isRunning) return;
+        const duration = this.getPomodoroDuration(this.pomodoroState.mode);
+        if (!Number.isFinite(this.pomodoroState.remainingMs) || this.pomodoroState.remainingMs <= 0) {
+            this.pomodoroState.remainingMs = duration;
+        }
+        this.pomodoroState.targetEnd = Date.now() + this.pomodoroState.remainingMs;
+        this.pomodoroState.isRunning = true;
+        this.savePomodoroState();
+        this.updatePomodoroDisplay();
+    }
+    pausePomodoro() {
+        if (!this.pomodoroState.isRunning) return;
+        this.pomodoroState.remainingMs = Math.max(0, this.pomodoroState.targetEnd - Date.now());
+        this.pomodoroState.isRunning = false;
+        this.pomodoroState.targetEnd = null;
+        this.savePomodoroState();
+        this.updatePomodoroDisplay();
+    }
+    resetPomodoro() {
+        const ok = confirm('停止计时将丢失本次番茄，确认停止？');
+        if (!ok) return;
+        this.pomodoroState.mode = 'work';
+        this.pomodoroState.remainingMs = this.getPomodoroDuration('work');
+        this.pomodoroState.isRunning = false;
+        this.pomodoroState.targetEnd = null;
+        this.pomodoroState.cycleCount = 0;
+        this.savePomodoroState();
+        this.renderPomodoro();
+    }
+    skipPomodoro() {
+        this.finishPomodoroSession(false);
+    }
+    finishPomodoroSession(recordStats) {
+        const prevMode = this.pomodoroState.mode;
+        if (prevMode === 'work') {
+            if (recordStats) this.recordPomodoroWork();
+            if (recordStats) {
+                this.pomodoroState.cycleCount = (this.pomodoroState.cycleCount || 0) + 1;
+            }
+            const cycles = this.pomodoroState.cycleCount || 0;
+            const isLongBreak = cycles > 0 && (cycles % this.pomodoroSettings.longBreakEvery) === 0;
+            this.pomodoroState.mode = isLongBreak ? 'long' : 'short';
+            this.pomodoroState.remainingMs = this.getPomodoroDuration(this.pomodoroState.mode);
+            if (recordStats) {
+                const label = this.pomodoroState.mode === 'long' ? '长休' : '短休';
+                this.showToast(`完成 1 个番茄，进入${label}`);
+                this.playPomodoroAlert('work');
+            }
+        } else {
+            if (recordStats) this.recordPomodoroBreak(prevMode);
+            this.pomodoroState.mode = 'work';
+            this.pomodoroState.remainingMs = this.getPomodoroDuration('work');
+            if (recordStats) {
+                this.showToast('休息结束，开始专注');
+                this.playPomodoroAlert('break');
+            }
+        }
+        const nextModeIsBreak = this.pomodoroState.mode !== 'work';
+        const autoStart = nextModeIsBreak ? this.pomodoroSettings.autoStartBreak : this.pomodoroSettings.autoStartWork;
+        this.pomodoroState.isRunning = !!autoStart;
+        this.pomodoroState.targetEnd = this.pomodoroState.isRunning ? Date.now() + this.pomodoroState.remainingMs : null;
+        this.savePomodoroState();
+        this.renderPomodoro();
+    }
+    recordPomodoroWork() {
+        const dateKey = this.formatDate(new Date());
+        const day = this.pomodoroHistory.days[dateKey] || { workSessions: 0, workMinutes: 0, breakMinutes: 0 };
+        day.workSessions += 1;
+        day.workMinutes += this.pomodoroSettings.workMin;
+        this.pomodoroHistory.days[dateKey] = day;
+        this.pomodoroHistory.totalWorkSessions += 1;
+        this.pomodoroHistory.totalWorkMinutes += this.pomodoroSettings.workMin;
+        const taskId = this.pomodoroState.currentTaskId;
+        const task = taskId ? this.data.find(t => t.id === taskId && !t.deletedAt) : null;
+        const timeLabel = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const sessionLabel = task ? `${task.title} (${timeLabel})` : `专注 (${timeLabel})`;
+        const sessionWithDate = `${dateKey} | ${sessionLabel}`;
+        this.pomodoroHistory.sessions = [sessionWithDate, ...(this.pomodoroHistory.sessions || [])].slice(0, 50);
+        this.savePomodoroHistory();
+        if (!api.isLocalMode() && api.auth) {
+            api.pomodoroSaveSession({
+                taskId: taskId || null,
+                taskTitle: task ? task.title : null,
+                startedAt: null,
+                endedAt: Date.now(),
+                durationMin: this.pomodoroSettings.workMin,
+                dateKey
+            }).catch(() => {});
+        }
+
+        if (taskId) {
+            if (task) {
+                task.pomodoros = (task.pomodoros || 0) + 1;
+                if (this.pomodoroSettings.autoFinishTask && task.status !== 'completed') {
+                    task.status = 'completed';
+                    task.completedAt = this.formatDate(new Date());
+                }
+                this.saveData();
+                this.render();
+            }
+        }
+    }
+    recordPomodoroBreak(mode) {
+        const dateKey = this.formatDate(new Date());
+        const day = this.pomodoroHistory.days[dateKey] || { workSessions: 0, workMinutes: 0, breakMinutes: 0 };
+        const mins = mode === 'long' ? this.pomodoroSettings.longBreakMin : this.pomodoroSettings.shortBreakMin;
+        day.breakMinutes += mins;
+        this.pomodoroHistory.days[dateKey] = day;
+        this.pomodoroHistory.totalBreakMinutes += mins;
+        this.savePomodoroHistory();
+    }
+    formatPomodoroTime(ms) {
+        const totalSeconds = Math.max(0, Math.ceil((ms || 0) / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    getPomodoroModeLabel(mode) {
+        if (mode === 'short') return '短休';
+        if (mode === 'long') return '长休';
+        return '专注';
+    }
+    setPomodoroTask(taskId) {
+        const parsed = parseInt(taskId, 10);
+        this.pomodoroState.currentTaskId = Number.isNaN(parsed) ? null : parsed;
+        this.savePomodoroState();
+        this.renderPomodoro();
+    }
+    togglePomodoroAutoStart() {
+        this.pomodoroSettings.autoStartNext = !this.pomodoroSettings.autoStartNext;
+        this.pomodoroSettings.autoStartBreak = !!this.pomodoroSettings.autoStartNext;
+        this.pomodoroSettings.autoStartWork = !!this.pomodoroSettings.autoStartNext;
+        this.savePomodoroSettings();
+        this.renderPomodoro();
+    }
+    togglePomodoroAutoStartBreak() {
+        this.pomodoroSettings.autoStartBreak = !this.pomodoroSettings.autoStartBreak;
+        this.pomodoroSettings.autoStartNext = this.pomodoroSettings.autoStartBreak && this.pomodoroSettings.autoStartWork;
+        this.savePomodoroSettings();
+        this.renderPomodoro();
+    }
+    togglePomodoroAutoStartWork() {
+        this.pomodoroSettings.autoStartWork = !this.pomodoroSettings.autoStartWork;
+        this.pomodoroSettings.autoStartNext = this.pomodoroSettings.autoStartBreak && this.pomodoroSettings.autoStartWork;
+        this.savePomodoroSettings();
+        this.renderPomodoro();
+    }
+    togglePomodoroAutoFinishTask() {
+        this.pomodoroSettings.autoFinishTask = !this.pomodoroSettings.autoFinishTask;
+        this.savePomodoroSettings();
+        this.renderPomodoro();
+    }
+    openPomodoroSettings() {
+        const settingsOverlay = document.getElementById('pomodoro-settings-overlay');
+        if (settingsOverlay) settingsOverlay.classList.add('show');
+        const workInput = document.getElementById('pomodoro-work-min');
+        if (workInput) workInput.focus();
+    }
+    closePomodoroSettings() {
+        const settingsOverlay = document.getElementById('pomodoro-settings-overlay');
+        if (settingsOverlay) settingsOverlay.classList.remove('show');
+    }
+    togglePomodoroTaskPicker() {
+        if (this.isPomodoroTaskLocked()) {
+            this.showToast('本轮番茄结束前无法更换任务');
+            return;
+        }
+        const picker = document.getElementById('pomodoro-task-picker');
+        if (picker) picker.classList.toggle('open');
+    }
+    setPomodoroTaskFromPicker(taskId) {
+        if (this.isPomodoroTaskLocked()) {
+            this.showToast('本轮番茄结束前无法更换任务');
+            return;
+        }
+        this.setPomodoroTask(taskId);
+        const picker = document.getElementById('pomodoro-task-picker');
+        if (picker) picker.classList.remove('open');
+    }
+    updatePomodoroDisplay() {
+        const timeEl = document.getElementById('pomodoro-time');
+        const timeTextEl = document.getElementById('pomodoro-time-text');
+        const modeEl = document.getElementById('pomodoro-mode-label');
+        const remainingMs = this.getPomodoroRemainingMs();
+        const timeText = this.formatPomodoroTime(remainingMs);
+        if (timeTextEl) {
+            timeTextEl.innerText = timeText;
+        } else if (timeEl) {
+            timeEl.innerText = timeText;
+        }
+        if (timeEl) {
+            timeEl.classList.toggle('work', this.pomodoroState.mode === 'work');
+            timeEl.classList.toggle('break', this.pomodoroState.mode !== 'work');
+        }
+        const progressEl = document.getElementById('pomodoro-progress');
+        const ringEl = document.getElementById('pomodoro-ring');
+        if (progressEl && ringEl) {
+            const radius = ringEl.r?.baseVal?.value || 54;
+            const circumference = 2 * Math.PI * radius;
+            const duration = this.getPomodoroDuration(this.pomodoroState.mode);
+            const remaining = Math.max(0, remainingMs || 0);
+            const rawProgress = duration > 0 ? (remaining / duration) : 0;
+            const progress = Math.min(1, Math.max(0, rawProgress));
+            ringEl.style.strokeDasharray = `${circumference}`;
+            ringEl.style.strokeDashoffset = `${-circumference * (1 - progress)}`;
+            progressEl.classList.toggle('work', this.pomodoroState.mode === 'work');
+            progressEl.classList.toggle('break', this.pomodoroState.mode !== 'work');
+        }
+        if (modeEl) modeEl.innerText = this.getPomodoroModeLabel(this.pomodoroState.mode);
+        const actionBtn = document.getElementById('pomodoro-action-btn');
+        if (actionBtn) {
+            actionBtn.classList.toggle('is-running', this.pomodoroState.isRunning);
+            actionBtn.setAttribute('aria-label', this.pomodoroState.isRunning ? '暂停' : '开始');
+        }
+    }
+    updatePomodoroSettingsFromUI() {
+        const workInput = document.getElementById('pomodoro-work-min');
+        const shortInput = document.getElementById('pomodoro-short-min');
+        const longInput = document.getElementById('pomodoro-long-min');
+        const everyInput = document.getElementById('pomodoro-long-every');
+        const workMin = Math.max(1, parseInt(workInput?.value, 10) || this.pomodoroSettings.workMin);
+        const shortMin = Math.max(1, parseInt(shortInput?.value, 10) || this.pomodoroSettings.shortBreakMin);
+        const longMin = Math.max(1, parseInt(longInput?.value, 10) || this.pomodoroSettings.longBreakMin);
+        const longEvery = Math.max(1, parseInt(everyInput?.value, 10) || this.pomodoroSettings.longBreakEvery);
+        this.pomodoroSettings.workMin = workMin;
+        this.pomodoroSettings.shortBreakMin = shortMin;
+        this.pomodoroSettings.longBreakMin = longMin;
+        this.pomodoroSettings.longBreakEvery = longEvery;
+        this.savePomodoroSettings();
+        if (!this.pomodoroState.isRunning) {
+            this.pomodoroState.remainingMs = this.getPomodoroDuration(this.pomodoroState.mode);
+            this.savePomodoroState();
+            this.updatePomodoroDisplay();
+        }
+        this.renderPomodoro();
+    }
+    playPomodoroAlert(kind) {
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = kind === 'work' ? 880 : 660;
+                gain.gain.value = 0.12;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                setTimeout(() => { osc.stop(); ctx.close(); }, 220);
+            }
+        } catch (e) {}
+        if (navigator.vibrate) navigator.vibrate([200, 120, 200]);
+        if ('Notification' in window && Notification.permission === 'granted') {
+            const title = kind === 'work' ? '番茄完成' : '休息结束';
+            const body = kind === 'work' ? '进入休息时间' : '开始新的专注';
+            try { new Notification(title, { body }); } catch (e) {}
+        }
+    }
+    initPomodoroTicks() {
+        const ticksEl = document.getElementById('pomodoro-ticks');
+        if (!ticksEl || ticksEl.childElementCount > 0) return;
+        const ns = 'http://www.w3.org/2000/svg';
+        const cx = 200;
+        const cy = 200;
+        const outerR = 170;
+        const shortLen = 6;
+        const longLen = 12;
+        for (let i = 0; i < 60; i++) {
+            const angle = (i / 60) * Math.PI * 2;
+            const isMajor = i % 5 === 0;
+            const len = isMajor ? longLen : shortLen;
+            const r1 = outerR - len;
+            const r2 = outerR;
+            const x1 = cx + Math.cos(angle) * r1;
+            const y1 = cy + Math.sin(angle) * r1;
+            const x2 = cx + Math.cos(angle) * r2;
+            const y2 = cy + Math.sin(angle) * r2;
+            const line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', x1.toFixed(2));
+            line.setAttribute('y1', y1.toFixed(2));
+            line.setAttribute('x2', x2.toFixed(2));
+            line.setAttribute('y2', y2.toFixed(2));
+            ticksEl.appendChild(line);
+        }
+    }
+    renderPomodoro() {
+        const container = document.getElementById('view-pomodoro');
+        if (!container) return;
+        this.initPomodoroTicks();
+
+        const taskId = this.pomodoroState.currentTaskId;
+        const task = taskId ? this.data.find(t => t.id === taskId && !t.deletedAt) : null;
+        if (!task && taskId) {
+            this.pomodoroState.currentTaskId = null;
+            this.savePomodoroState();
+        }
+
+        const taskTitleEl = document.getElementById('pomodoro-task-title');
+        if (taskTitleEl) taskTitleEl.innerText = task ? task.title : '点击选择任务';
+        const taskHintEl = document.getElementById('pomodoro-task-hint');
+        if (taskHintEl) taskHintEl.innerText = task ? '点击更换任务' : '点击选择任务';
+
+        const listEl = document.getElementById('pomodoro-task-list');
+        if (listEl) {
+            const tasks = this.data.filter(t => !t.deletedAt);
+            const noneActive = !task;
+            const items = [];
+            items.push(
+                `<button class="pomodoro-task-item ${noneActive ? 'active' : ''}" type="button" onclick="app.setPomodoroTaskFromPicker('')">不选择任务<span>${noneActive ? '当前' : ''}</span></button>`
+            );
+            tasks.forEach(t => {
+                const active = task && t.id === task.id;
+                const status = t.status === 'completed' ? '已完成' : '';
+                items.push(
+                    `<button class="pomodoro-task-item ${active ? 'active' : ''}" type="button" onclick="app.setPomodoroTaskFromPicker('${t.id}')">${t.title}<span>${status}</span></button>`
+                );
+            });
+            if (!tasks.length) items.push('<div class="pomodoro-task-empty">暂无任务</div>');
+            listEl.innerHTML = items.join('');
+        }
+
+        const cycleEl = document.getElementById('pomodoro-cycle-label');
+        if (cycleEl) cycleEl.innerText = `已完成 ${this.pomodoroState.cycleCount || 0} 个番茄`;
+
+        const autoSwitch = document.getElementById('pomodoro-auto-switch');
+        if (autoSwitch) autoSwitch.classList.toggle('active', !!this.pomodoroSettings.autoStartNext);
+        const autoBreakSwitch = document.getElementById('pomodoro-auto-break-switch');
+        if (autoBreakSwitch) autoBreakSwitch.classList.toggle('active', !!this.pomodoroSettings.autoStartBreak);
+        const autoWorkSwitch = document.getElementById('pomodoro-auto-work-switch');
+        if (autoWorkSwitch) autoWorkSwitch.classList.toggle('active', !!this.pomodoroSettings.autoStartWork);
+        const autoFinishSwitch = document.getElementById('pomodoro-auto-finish-switch');
+        if (autoFinishSwitch) autoFinishSwitch.classList.toggle('active', !!this.pomodoroSettings.autoFinishTask);
+
+        const workInput = document.getElementById('pomodoro-work-min');
+        const shortInput = document.getElementById('pomodoro-short-min');
+        const longInput = document.getElementById('pomodoro-long-min');
+        const everyInput = document.getElementById('pomodoro-long-every');
+        if (workInput) workInput.value = this.pomodoroSettings.workMin;
+        if (shortInput) shortInput.value = this.pomodoroSettings.shortBreakMin;
+        if (longInput) longInput.value = this.pomodoroSettings.longBreakMin;
+        if (everyInput) everyInput.value = this.pomodoroSettings.longBreakEvery;
+
+        const todayKey = this.formatDate(new Date());
+        const day = this.pomodoroHistory.days[todayKey] || { workSessions: 0, workMinutes: 0, breakMinutes: 0 };
+        const todayCountEl = document.getElementById('pomodoro-today-count');
+        const todayMinutesEl = document.getElementById('pomodoro-today-minutes');
+        const totalCountEl = document.getElementById('pomodoro-total-count');
+        const totalMinutesEl = document.getElementById('pomodoro-total-minutes');
+        if (todayCountEl) todayCountEl.innerText = String(day.workSessions || 0);
+        if (todayMinutesEl) todayMinutesEl.innerText = String(day.workMinutes || 0);
+        if (totalCountEl) totalCountEl.innerText = String(this.pomodoroHistory.totalWorkSessions || 0);
+        if (totalMinutesEl) totalMinutesEl.innerText = String(this.pomodoroHistory.totalWorkMinutes || 0);
+
+        const recentEl = document.getElementById('pomodoro-recent-list');
+        if (recentEl) {
+            const items = Object.entries(this.pomodoroHistory.days || {})
+                .sort((a, b) => String(b[0]).localeCompare(String(a[0])))
+                .slice(0, 7)
+                .map(([date, info]) => {
+                    const count = info.workSessions || 0;
+                    const minutes = info.workMinutes || 0;
+                    return `<div class="pomodoro-history-item"><span>${date}</span><span>${count} 🍅 / ${minutes} 分钟</span></div>`;
+                });
+            recentEl.innerHTML = items.join('') || '<div style="font-size:0.85rem; color:#777;">暂无记录</div>';
+        }
+
+        const completedEl = document.getElementById('pomodoro-completed-list');
+        if (completedEl) {
+            const sessions = (this.pomodoroHistory.sessions || []).slice(0, 10);
+            const grouped = new Map();
+            const order = [];
+            sessions.forEach((item) => {
+                const parts = String(item).split(' | ');
+                const dateKey = parts.length > 1 ? parts[0] : '未记录日期';
+                const label = parts.length > 1 ? parts.slice(1).join(' | ') : item;
+                if (!grouped.has(dateKey)) {
+                    grouped.set(dateKey, []);
+                    order.push(dateKey);
+                }
+                grouped.get(dateKey).push(label);
+            });
+            const items = order.flatMap((dateKey) => {
+                const rows = grouped.get(dateKey) || [];
+                return [
+                    `<div class="pomodoro-history-date">${dateKey}</div>`,
+                    ...rows.map(label => `<div class="pomodoro-history-item"><span>${label}</span></div>`)
+                ];
+            });
+            completedEl.innerHTML = items.join('') || '<div style="font-size:0.85rem; color:#777;">暂无记录</div>';
+        }
+
+        this.updatePomodoroDisplay();
+    }
+
     handleSearch(val) { this.filter.query = val; if(val && this.view!=='search') this.switchView('search'); this.render(); }
     
     updateDateDisplay() {

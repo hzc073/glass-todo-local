@@ -185,6 +185,40 @@ setInterval(() => {
     scanAndSendReminders().finally(() => { pushScanRunning = false; });
 }, PUSH_SCAN_INTERVAL_MS);
 
+const getPomodoroDefaults = () => ({
+    workMin: 25,
+    shortBreakMin: 5,
+    longBreakMin: 15,
+    longBreakEvery: 4,
+    autoStartNext: false,
+    autoStartBreak: false,
+    autoStartWork: false,
+    autoFinishTask: false
+});
+
+const upsertPomodoroDailyStats = async (username, dateKey, workMinutes = 0, breakMinutes = 0) => {
+    const rows = await dbAll(
+        "SELECT work_sessions, work_minutes, break_minutes FROM pomodoro_daily_stats WHERE username = ? AND date_key = ?",
+        [username, dateKey]
+    );
+    const updatedAt = Date.now();
+    if (!rows.length) {
+        await dbRun(
+            "INSERT INTO pomodoro_daily_stats (username, date_key, work_sessions, work_minutes, break_minutes, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [username, dateKey, workMinutes > 0 ? 1 : 0, workMinutes, breakMinutes, updatedAt]
+        );
+        return;
+    }
+    const current = rows[0];
+    const nextSessions = current.work_sessions + (workMinutes > 0 ? 1 : 0);
+    const nextWork = current.work_minutes + workMinutes;
+    const nextBreak = current.break_minutes + breakMinutes;
+    await dbRun(
+        "UPDATE pomodoro_daily_stats SET work_sessions = ?, work_minutes = ?, break_minutes = ?, updated_at = ? WHERE username = ? AND date_key = ?",
+        [nextSessions, nextWork, nextBreak, updatedAt, username, dateKey]
+    );
+};
+
 // --- API 路由 ---
 
 // 1. 登录/注册
@@ -216,6 +250,185 @@ app.post('/api/data', authenticate, (req, res) => {
             () => res.json({ success: true, version: newVersion })
         );
     });
+});
+
+// Pomodoro settings/state/sessions
+app.get('/api/pomodoro/settings', authenticate, async (req, res) => {
+    try {
+        const rows = await dbAll(
+            "SELECT work_min, short_break_min, long_break_min, long_break_every, auto_start_next, auto_start_break, auto_start_work, auto_finish_task FROM pomodoro_settings WHERE username = ?",
+            [req.user.username]
+        );
+        if (!rows.length) {
+            return res.json({ settings: getPomodoroDefaults() });
+        }
+        const r = rows[0];
+        res.json({
+            settings: {
+                workMin: r.work_min,
+                shortBreakMin: r.short_break_min,
+                longBreakMin: r.long_break_min,
+                longBreakEvery: r.long_break_every,
+                autoStartNext: !!r.auto_start_next,
+                autoStartBreak: r.auto_start_break === null || typeof r.auto_start_break === 'undefined' ? !!r.auto_start_next : !!r.auto_start_break,
+                autoStartWork: r.auto_start_work === null || typeof r.auto_start_work === 'undefined' ? !!r.auto_start_next : !!r.auto_start_work,
+                autoFinishTask: !!r.auto_finish_task
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to load pomodoro settings" });
+    }
+});
+
+app.post('/api/pomodoro/settings', authenticate, async (req, res) => {
+    const defaults = getPomodoroDefaults();
+    const workMin = Math.max(1, parseInt(req.body.workMin, 10) || defaults.workMin);
+    const shortMin = Math.max(1, parseInt(req.body.shortBreakMin, 10) || defaults.shortBreakMin);
+    const longMin = Math.max(1, parseInt(req.body.longBreakMin, 10) || defaults.longBreakMin);
+    const longEvery = Math.max(1, parseInt(req.body.longBreakEvery, 10) || defaults.longBreakEvery);
+    const autoStartNext = req.body.autoStartNext ? 1 : 0;
+    const autoStartBreak = (typeof req.body.autoStartBreak === 'boolean' ? req.body.autoStartBreak : req.body.autoStartNext) ? 1 : 0;
+    const autoStartWork = (typeof req.body.autoStartWork === 'boolean' ? req.body.autoStartWork : req.body.autoStartNext) ? 1 : 0;
+    const autoFinishTask = req.body.autoFinishTask ? 1 : 0;
+    const updatedAt = Date.now();
+    try {
+        await dbRun(
+            `INSERT OR REPLACE INTO pomodoro_settings 
+            (username, work_min, short_break_min, long_break_min, long_break_every, auto_start_next, auto_start_break, auto_start_work, auto_finish_task, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.user.username, workMin, shortMin, longMin, longEvery, autoStartNext, autoStartBreak, autoStartWork, autoFinishTask, updatedAt]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to save pomodoro settings" });
+    }
+});
+
+app.get('/api/pomodoro/state', authenticate, async (req, res) => {
+    try {
+        const rows = await dbAll(
+            "SELECT mode, remaining_ms, is_running, target_end, cycle_count, current_task_id FROM pomodoro_state WHERE username = ?",
+            [req.user.username]
+        );
+        if (!rows.length) {
+            return res.json({ state: null });
+        }
+        const r = rows[0];
+        res.json({
+            state: {
+                mode: r.mode,
+                remainingMs: r.remaining_ms,
+                isRunning: !!r.is_running,
+                targetEnd: r.target_end,
+                cycleCount: r.cycle_count,
+                currentTaskId: r.current_task_id
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to load pomodoro state" });
+    }
+});
+
+app.post('/api/pomodoro/state', authenticate, async (req, res) => {
+    const allowedModes = new Set(['work', 'short', 'long']);
+    const mode = allowedModes.has(req.body.mode) ? req.body.mode : 'work';
+    const remainingMs = Math.max(0, parseInt(req.body.remainingMs, 10) || 0);
+    const isRunning = req.body.isRunning ? 1 : 0;
+    const targetEndParsed = parseInt(req.body.targetEnd, 10);
+    const targetEnd = Number.isFinite(targetEndParsed) ? targetEndParsed : null;
+    const cycleCount = Math.max(0, parseInt(req.body.cycleCount, 10) || 0);
+    const currentTaskParsed = parseInt(req.body.currentTaskId, 10);
+    const currentTaskId = Number.isFinite(currentTaskParsed) ? currentTaskParsed : null;
+    const updatedAt = Date.now();
+    try {
+        await dbRun(
+            `INSERT OR REPLACE INTO pomodoro_state 
+            (username, mode, remaining_ms, is_running, target_end, cycle_count, current_task_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.user.username, mode, remainingMs, isRunning, targetEnd, cycleCount, currentTaskId, updatedAt]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to save pomodoro state" });
+    }
+});
+
+app.get('/api/pomodoro/summary', authenticate, async (req, res) => {
+    const days = Math.min(60, Math.max(1, parseInt(req.query.days, 10) || 7));
+    try {
+        const rows = await dbAll(
+            `SELECT date_key, work_sessions, work_minutes, break_minutes 
+             FROM pomodoro_daily_stats WHERE username = ? ORDER BY date_key DESC LIMIT ?`,
+            [req.user.username, days]
+        );
+        const totals = await dbAll(
+            `SELECT 
+                COALESCE(SUM(work_sessions), 0) AS total_sessions,
+                COALESCE(SUM(work_minutes), 0) AS total_minutes,
+                COALESCE(SUM(break_minutes), 0) AS total_break
+             FROM pomodoro_daily_stats WHERE username = ?`,
+            [req.user.username]
+        );
+        const daysMap = {};
+        rows.forEach((row) => {
+            daysMap[row.date_key] = {
+                workSessions: row.work_sessions,
+                workMinutes: row.work_minutes,
+                breakMinutes: row.break_minutes
+            };
+        });
+        const totalRow = totals[0] || {};
+        res.json({
+            totals: {
+                totalWorkSessions: totalRow.total_sessions || 0,
+                totalWorkMinutes: totalRow.total_minutes || 0,
+                totalBreakMinutes: totalRow.total_break || 0
+            },
+            days: daysMap
+        });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to load pomodoro summary" });
+    }
+});
+
+app.get('/api/pomodoro/sessions', authenticate, async (req, res) => {
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    try {
+        const rows = await dbAll(
+            `SELECT id, task_id, task_title, started_at, ended_at, duration_min 
+             FROM pomodoro_sessions WHERE username = ? ORDER BY ended_at DESC LIMIT ?`,
+            [req.user.username, limit]
+        );
+        res.json({ sessions: rows });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to load pomodoro sessions" });
+    }
+});
+
+app.post('/api/pomodoro/sessions', authenticate, async (req, res) => {
+    const taskIdParsed = parseInt(req.body.taskId, 10);
+    const taskId = Number.isFinite(taskIdParsed) ? taskIdParsed : null;
+    const taskTitle = req.body.taskTitle ? String(req.body.taskTitle) : null;
+    const startedAtParsed = parseInt(req.body.startedAt, 10);
+    const startedAt = Number.isFinite(startedAtParsed) ? startedAtParsed : null;
+    const endedAtParsed = parseInt(req.body.endedAt, 10);
+    const endedAt = Number.isFinite(endedAtParsed) ? endedAtParsed : Date.now();
+    const durationMin = Math.max(1, parseInt(req.body.durationMin, 10) || 1);
+    const dateKey = req.body.dateKey ? String(req.body.dateKey) : null;
+    try {
+        await dbRun(
+            `INSERT INTO pomodoro_sessions 
+            (username, task_id, task_title, started_at, ended_at, duration_min, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [req.user.username, taskId, taskTitle, startedAt, endedAt, durationMin, Date.now()]
+        );
+        if (dateKey) {
+            await upsertPomodoroDailyStats(req.user.username, dateKey, durationMin, 0);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to save pomodoro session" });
+    }
 });
 
 // Push notification APIs
