@@ -1,6 +1,15 @@
 name = "glass-todo-d1"
 main = "worker.js"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+VAPID_PUBLIC_KEY = ""
+VAPID_PRIVATE_KEY = ""
+VAPID_SUBJECT = "mailto:admin@example.com"
+
+[triggers]
+crons = ["* * * * *"]
 
 [[d1_databases]]
 binding = "DB"

@@ -1,8 +1,12 @@
+import webpush from 'web-push';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   'Access-Control-Allow-Headers': 'Authorization,Content-Type,x-invite-code'
 };
+
+const PUSH_WINDOW_MS = 60 * 1000;
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -44,6 +48,130 @@ async function getOrInitInviteCode(env) {
     .bind(code)
     .run();
   return code;
+}
+
+async function getSetting(env, key) {
+  const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?')
+    .bind(key)
+    .first();
+  return row && row.value ? row.value : null;
+}
+
+async function setSetting(env, key, value) {
+  await env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    .bind(key, value)
+    .run();
+}
+
+async function ensureVapid(env) {
+  let publicKey = env.VAPID_PUBLIC_KEY || '';
+  let privateKey = env.VAPID_PRIVATE_KEY || '';
+  let subject = env.VAPID_SUBJECT || 'mailto:admin@example.com';
+
+  if (!publicKey || !privateKey) {
+    const storedPublic = await getSetting(env, 'vapid_public_key');
+    const storedPrivate = await getSetting(env, 'vapid_private_key');
+    const storedSubject = await getSetting(env, 'vapid_subject');
+    if (!publicKey && storedPublic) publicKey = storedPublic;
+    if (!privateKey && storedPrivate) privateKey = storedPrivate;
+    if (!env.VAPID_SUBJECT && storedSubject) subject = storedSubject;
+  }
+
+  if (!publicKey || !privateKey) {
+    const generated = webpush.generateVAPIDKeys();
+    publicKey = generated.publicKey;
+    privateKey = generated.privateKey;
+    await setSetting(env, 'vapid_public_key', publicKey);
+    await setSetting(env, 'vapid_private_key', privateKey);
+    await setSetting(env, 'vapid_subject', subject);
+  }
+
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+  return { publicKey, privateKey, subject };
+}
+
+function buildPushPayload(task) {
+  const when = task && task.date ? `${task.date}${task.start ? ` ${task.start}` : ''}` : '';
+  return {
+    title: '开始时间提醒',
+    body: when ? `${task.title} (${when})` : task.title,
+    url: '/',
+    tag: `task-${task.id}`
+  };
+}
+
+async function sendPushToUser(env, username, payload) {
+  const rows = await env.DB.prepare(
+    'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE username = ?'
+  )
+    .bind(username)
+    .all();
+  const subs = rows.results || [];
+  if (!subs.length) return false;
+
+  const message = JSON.stringify(payload);
+  let anySent = false;
+  await Promise.allSettled(
+    subs.map(async (sub) => {
+      const subscription = {
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth }
+      };
+      try {
+        await webpush.sendNotification(subscription, message);
+        anySent = true;
+      } catch (err) {
+        const code = err && err.statusCode;
+        if (code === 404 || code === 410 || code === 401 || code === 403) {
+          await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?')
+            .bind(sub.endpoint)
+            .run();
+        }
+      }
+    })
+  );
+  return anySent;
+}
+
+async function scanAndSendReminders(env) {
+  await ensureVapid(env);
+  const rows = await env.DB.prepare('SELECT username, json_data FROM data').all();
+  const dataRows = rows.results || [];
+  const now = Date.now();
+
+  for (const row of dataRows) {
+    let tasks = [];
+    try {
+      tasks = JSON.parse(row.json_data || '[]');
+    } catch (e) {
+      continue;
+    }
+    if (!Array.isArray(tasks) || tasks.length === 0) continue;
+    let changed = false;
+
+    for (const task of tasks) {
+      if (!task || task.deletedAt || task.status === 'completed') continue;
+      const remindAt = Number(task.remindAt || 0);
+      if (!Number.isFinite(remindAt) || remindAt <= 0) continue;
+      const notifiedAt = Number(task.notifiedAt || 0);
+      if (notifiedAt && notifiedAt >= remindAt) continue;
+      if (now < remindAt || now >= (remindAt + PUSH_WINDOW_MS)) continue;
+      const sent = await sendPushToUser(env, row.username, buildPushPayload(task));
+      if (sent) {
+        task.notifiedAt = now;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      const newVersion = Date.now();
+      await env.DB.prepare(
+        'INSERT OR REPLACE INTO data (username, json_data, version) VALUES (?, ?, ?)'
+      )
+        .bind(row.username, JSON.stringify(tasks), newVersion)
+        .run();
+    }
+  }
 }
 
 async function authenticate(req, env) {
@@ -229,6 +357,54 @@ async function handleChangePassword(req, user, env) {
   return jsonResponse({ success: true });
 }
 
+async function handlePushPublicKey(env) {
+  const keys = await ensureVapid(env);
+  return jsonResponse({ key: keys.publicKey });
+}
+
+async function handlePushSubscribe(req, user, env) {
+  const body = await parseJsonBody(req);
+  if (!body || !body.subscription) return jsonResponse({ error: 'Invalid JSON' }, 400);
+  const sub = body.subscription;
+  if (!sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+    return jsonResponse({ error: 'Invalid subscription' }, 400);
+  }
+  const now = Date.now();
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO push_subscriptions (endpoint, username, p256dh, auth, expiration_time, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
+    .bind(sub.endpoint, user.username, sub.keys.p256dh, sub.keys.auth, sub.expirationTime || null, now)
+    .run();
+  return jsonResponse({ success: true });
+}
+
+async function handlePushUnsubscribe(req, user, env) {
+  const body = await parseJsonBody(req);
+  const endpoint = body && body.endpoint ? String(body.endpoint) : '';
+  if (!endpoint) {
+    await env.DB.prepare('DELETE FROM push_subscriptions WHERE username = ?')
+      .bind(user.username)
+      .run();
+    return jsonResponse({ success: true });
+  }
+  await env.DB.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND username = ?')
+    .bind(endpoint, user.username)
+    .run();
+  return jsonResponse({ success: true });
+}
+
+async function handlePushTest(user, env) {
+  await ensureVapid(env);
+  const sent = await sendPushToUser(env, user.username, {
+    title: '测试通知',
+    body: '这是一条测试通知',
+    url: '/',
+    tag: `test-${Date.now()}`
+  });
+  if (!sent) return jsonResponse({ error: 'No subscription' }, 404);
+  return jsonResponse({ success: true });
+}
+
 async function handleHolidays(pathname) {
   const parts = pathname.split('/');
   const year = String(parts[parts.length - 1] || '').trim();
@@ -299,10 +475,27 @@ export default {
       return handleChangePassword(req, user, env);
     }
 
+    if (pathname === '/api/push/public-key' && req.method === 'GET') {
+      return handlePushPublicKey(env);
+    }
+    if (pathname === '/api/push/subscribe' && req.method === 'POST') {
+      return handlePushSubscribe(req, user, env);
+    }
+    if (pathname === '/api/push/unsubscribe' && req.method === 'POST') {
+      return handlePushUnsubscribe(req, user, env);
+    }
+    if (pathname === '/api/push/test' && req.method === 'POST') {
+      return handlePushTest(user, env);
+    }
+
     if (pathname.startsWith('/api/holidays/') && req.method === 'GET') {
       return handleHolidays(pathname);
     }
 
     return jsonResponse({ error: 'Not Found' }, 404);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(scanAndSendReminders(env));
   }
 };
