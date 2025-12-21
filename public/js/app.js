@@ -69,6 +69,7 @@ class TodoApp {
         this.calendarDefaultMode = defaults.calendarDefaultMode;
         this.autoMigrateEnabled = defaults.autoMigrateEnabled;
         this.calendarSettings = { ...defaults.calendarSettings };
+        this.tagColors = this.loadTagColors();
 
         // 模块初始化
         this.admin = new AdminPanel();
@@ -131,6 +132,75 @@ class TodoApp {
             pushEnabled: false,
             calendarSettings: { showTime: true, showTags: true, showLunar: true, showHoliday: true }
         };
+    }
+
+    loadTagColors() {
+        try {
+            const raw = localStorage.getItem('glass_tag_colors');
+            const parsed = raw ? JSON.parse(raw) : {};
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+    saveTagColors() {
+        try {
+            localStorage.setItem('glass_tag_colors', JSON.stringify(this.tagColors || {}));
+        } catch (e) {
+            // ignore
+        }
+    }
+    hslToHex(h, s, l) {
+        const sat = s / 100;
+        const light = l / 100;
+        const k = (n) => (n + h / 30) % 12;
+        const a = sat * Math.min(light, 1 - light);
+        const f = (n) => {
+            const color = light - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+            return Math.round(255 * color).toString(16).padStart(2, '0');
+        };
+        return `#${f(0)}${f(8)}${f(4)}`;
+    }
+    hexToRgba(hex, alpha) {
+        const clean = hex.replace('#', '');
+        if (clean.length !== 6) return `rgba(0,0,0,${alpha})`;
+        const r = parseInt(clean.slice(0, 2), 16);
+        const g = parseInt(clean.slice(2, 4), 16);
+        const b = parseInt(clean.slice(4, 6), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    }
+    generateTagColor() {
+        const hue = Math.floor(Math.random() * 360);
+        return this.hslToHex(hue, 45, 78);
+    }
+    ensureTagColors(tags = []) {
+        let changed = false;
+        tags.forEach((tag) => {
+            if (!this.tagColors[tag]) {
+                this.tagColors[tag] = this.generateTagColor();
+                changed = true;
+            }
+        });
+        if (changed) this.saveTagColors();
+    }
+    getTagColor(tag) {
+        if (!tag) return '#7AB9FF';
+        if (!this.tagColors[tag]) {
+            this.tagColors[tag] = this.generateTagColor();
+            this.saveTagColors();
+        }
+        return this.tagColors[tag];
+    }
+    darkenColor(hex, factor = 0.6) {
+        const clean = String(hex || '').replace('#', '');
+        if (clean.length !== 6) return hex;
+        const r = Math.max(0, Math.min(255, Math.round(parseInt(clean.slice(0, 2), 16) * factor)));
+        const g = Math.max(0, Math.min(255, Math.round(parseInt(clean.slice(2, 4), 16) * factor)));
+        const b = Math.max(0, Math.min(255, Math.round(parseInt(clean.slice(4, 6), 16) * factor)));
+        return `rgb(${r},${g},${b})`;
+    }
+    getTagTextColor(tag) {
+        return this.darkenColor(this.getTagColor(tag), 0.55);
     }
     loadUserSettingsFromLocal() {
         const defaults = this.getUserSettingsDefaults();
@@ -991,8 +1061,11 @@ class TodoApp {
     }
 
     createCardHtml(t) {
-        const qColor = this.getQuadrantColor(t.quadrant);
-        const tags = (t.tags||[]).map(tag => `<span class="tag-pill">#${tag}</span>`).join(' ');
+        const qColor = this.getQuadrantLightColor(t.quadrant);
+        const tags = (t.tags||[]).map(tag => {
+            const color = this.getTagTextColor(tag);
+            return `<span class="tag-pill" style="color:${color}; background:rgba(0,0,0,0.08);">#${tag}</span>`;
+        }).join(' ');
         const pomodoroCount = Number(t.pomodoros || 0);
         const pomodoroHtml = pomodoroCount ? `<span class="pomodoro-pill">🍅 ${pomodoroCount}</span>` : '';
         const attachmentCount = Array.isArray(t.attachments)
@@ -1249,6 +1322,7 @@ class TodoApp {
             notifiedAt,
             deletedAt: this.currentTaskId ? (this.data.find(i=>i.id==this.currentTaskId)?.deletedAt || null) : null
         };
+        this.ensureTagColors(newItem.tags);
 
         if (this.currentTaskId) {
             this.queueUndo('已更新任务');
@@ -1723,13 +1797,16 @@ class TodoApp {
 
     renderTags() {
         const tags = new Set(); this.data.filter(t => !t.deletedAt).forEach(t => (t.tags||[]).forEach(tag => tags.add(tag)));
-        document.getElementById('tag-filter-list').innerHTML = Array.from(tags).map(tag => `
+        document.getElementById('tag-filter-list').innerHTML = Array.from(tags).map(tag => {
+            const color = this.getTagColor(tag);
+            return `
             <div class="nav-item ${this.filter.tag===tag?'active':''}" onclick="if(!event.target.closest('.tag-more')) app.setTagFilter('${tag}')">
-                <div class="tag-dot"></div> 
+                <div class="tag-dot" style="background:${color}"></div> 
                 <span style="flex:1">${tag}</span>
                 <div class="tag-more" onclick="event.stopPropagation();app.openTagMenu('${tag}')">⋯</div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
     setTagFilter(tag) { this.filter.tag = this.filter.tag === tag ? '' : tag; this.renderTags(); this.render(); }
     deleteTag(tag) {
@@ -2734,6 +2811,7 @@ class TodoApp {
     timeToMinutes(str) { const [h,m] = str.split(':').map(Number); return h*60+m; }
     minutesToTime(m) { const h = Math.floor(m/60); const min = Math.floor(m%60); return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`; }
     getQuadrantColor(q) { return {q1:'var(--danger)', q2:'var(--primary)', q3:'var(--warning)', q4:'var(--success)'}[q || 'q2']; }
+    getQuadrantLightColor(q) { return {q1:'var(--quad-danger)', q2:'var(--quad-primary)', q3:'var(--quad-warning)', q4:'var(--quad-success)'}[q || 'q2']; }
     isInboxTask(t) { return !!t && ((!t.date && !t.start && !t.end) || t.inbox); }
 
     initAttachmentControls() {

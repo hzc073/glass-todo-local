@@ -196,12 +196,17 @@ export default class CalendarView {
             
             div.style.top = startMin + 'px';
             div.style.height = Math.max(15, height) + 'px';
-            div.style.borderLeftColor = this.app.getQuadrantColor(t.quadrant);
+            div.style.borderLeftColor = this.app.getQuadrantLightColor(t.quadrant);
             
             const timeLabel = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
-            const tagText = this.settings.showTags && t.tags && t.tags.length ? t.tags.map(tag => `#${tag}`).join(' ') : '';
+            const tagHtml = this.settings.showTags && t.tags && t.tags.length
+                ? t.tags.map((tag) => {
+                    const color = this.app.getTagTextColor(tag);
+                    return `<span class="time-tag" style="color:${color}">#${tag}</span>`;
+                }).join(' ')
+                : '';
             const timeHtml = timeLabel ? `<div class="time-chip">${timeLabel}</div>` : '';
-            const tagHtml = tagText ? `<div class="time-slot-tags">${tagText}</div>` : '';
+            const tagWrap = tagHtml ? `<div class="time-slot-tags">${tagHtml}</div>` : '';
             
             const titleHtml = `<div class="task-title-text" style="${!isCompact ? 'font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; font-weight:500;' : ''}">${t.title}${timeLabel && isCompact ? ` <span class="time-chip small">${timeLabel}</span>` : ''}</div>`;
 
@@ -210,7 +215,7 @@ export default class CalendarView {
                 <div class="checkbox ${t.status==='completed'?'checked':''}" onclick="event.stopPropagation();app.toggleTask(${t.id})"></div>
                 ${titleHtml}
                 ${!isCompact ? timeHtml : ''}
-                ${!isCompact ? tagHtml : ''}
+                ${!isCompact ? tagWrap : ''}
                 <div class="resize-handle bottom" onmousedown="app.calendar.handleResizeStart(event, ${t.id}, 'bottom')"></div>
             `;
             div.onclick = (e) => { e.stopPropagation(); this.app.handleCardClick(e, t.id); };
@@ -331,7 +336,7 @@ export default class CalendarView {
                 slot.className = `week-time-slot ${t.status} ${isCompact ? 'is-compact' : ''}`;
                 slot.style.top = item.startMin + 'px';
                 slot.style.height = height + 'px';
-                slot.style.borderLeftColor = this.app.getQuadrantColor(t.quadrant);
+                slot.style.borderLeftColor = this.app.getQuadrantLightColor(t.quadrant);
 
                 const widthPercent = 100 / maxLanes;
                 const leftPercent = item.laneIndex * widthPercent;
@@ -339,8 +344,13 @@ export default class CalendarView {
                 slot.style.width = `calc(${widthPercent}% - 8px)`;
 
                 const timeLabel = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
-                const tagText = this.settings.showTags && t.tags && t.tags.length ? t.tags.map(tag => `#${tag}`).join(' ') : '';
-                const inlineMeta = `${timeLabel ? ` <span class="time-chip small">${timeLabel}</span>` : ''}${tagText ? ` <span class="week-inline-tag">${tagText}</span>` : ''}`;
+                const inlineTagHtml = this.settings.showTags && t.tags && t.tags.length
+                    ? t.tags.map((tag) => {
+                        const color = this.app.getTagTextColor(tag);
+                        return `<span class="week-inline-tag" style="color:${color}">#${tag}</span>`;
+                    }).join(' ')
+                    : '';
+                const inlineMeta = `${timeLabel ? ` <span class="time-chip small">${timeLabel}</span>` : ''}${inlineTagHtml ? ` ${inlineTagHtml}` : ''}`;
                 const titleHtml = `<div class="task-title-text">${t.title}${inlineMeta}</div>`;
 
                 slot.innerHTML = `${titleHtml}`;
@@ -389,10 +399,12 @@ export default class CalendarView {
             
             tasks.filter(t=>t.date===dStr).slice(0,4).forEach(t => {
                 const showTags = this.settings.showTags && t.tags && t.tags.length;
-                const tagText = showTags ? ` <span class="month-tag">#${t.tags[0]}</span>` : '';
+                const tagText = showTags
+                    ? ` <span class="month-tag" style="color:${this.app.getTagTextColor(t.tags[0])}">#${t.tags[0]}</span>`
+                    : '';
                 const timeText = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
                 const timeHtml = timeText ? `<span class="month-time">${timeText}</span>` : '';
-                const qColor = this.app.getQuadrantColor(t.quadrant);
+                const qColor = this.app.getQuadrantLightColor(t.quadrant);
                 cell.innerHTML += `<div class="month-task-pill ${t.status}" style="background:${qColor}; border:1px solid rgba(0,0,0,0.1);" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="app.handleMonthTaskClick(event, ${t.id})" ondblclick="app.handleMonthTaskDblClick(event, ${t.id})">${timeHtml}${t.title}${tagText}</div>`;
             });
             grid.appendChild(cell);
