@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <link rel="manifest" href="manifest.json">
+    <title>Glass Todo Pro (Local)</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- 1. 登录/注册窗口 (Local) -->
+    <div id="login-modal" style="position:fixed; inset:0; z-index:3000; background:rgba(0,0,0,0.6); backdrop-filter:blur(20px); display:flex; align-items:center; justify-content:center;">
+        <div class="modal-box" style="text-align:center; max-width:350px;">
+            <h2>👋 欢迎</h2>
+            <p style="margin:15px 0; color:#666;">私有部署 Todo 系统</p>
+            <input type="text" id="login-user" class="form-input" placeholder="用户名" style="text-align:center">
+            <input type="password" id="login-pwd" class="form-input" placeholder="密码" style="text-align:center">
+            <div id="invite-field" style="display:none; border-top:1px dashed #ccc; padding-top:15px; margin-bottom:15px;">
+                <p style="font-size:0.8rem; color:var(--primary); margin-bottom:5px;">新用户注册需要管理员邀请码</p>
+                <input type="text" id="login-invite" class="form-input" placeholder="邀请码" style="text-align:center; letter-spacing: 2px;">
+            </div>
+            <button class="btn" onclick="app.login()" style="width:100%">登录 / 注册</button>
+        </div>
+    </div>
+
+    <!-- 2. 管理员面板 (Local) -->
+    <div id="admin-modal">
+        <div class="modal-box" style="max-width:500px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                <h3>🛡️ 管理员面板</h3>
+                <button class="btn-text" onclick="document.getElementById('admin-modal').style.display='none'">关闭</button>
+            </div>
+            <div style="background:#f5f5f7; padding:15px; border-radius:10px; margin-bottom:20px; text-align:center;">
+                <div style="font-size:0.8rem; color:#666;">今日邀请码</div>
+                <div id="admin-invite-code" style="font-size:2rem; font-weight:bold; color:var(--primary); letter-spacing:5px; margin:10px 0;">LOADING</div>
+                <button class="btn btn-sm" onclick="app.adminRefreshCode()">🔄 刷新</button>
+            </div>
+            <h4>用户管理</h4>
+            <div id="admin-user-list"></div>
+        </div>
+    </div>
+
+    <!-- 3. 导出/报表 Modal -->
+    <div id="export-modal-overlay">
+        <div class="modal-box" style="width:500px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3>📤 导出报告</h3>
+                <button class="btn-text" onclick="document.getElementById('export-modal-overlay').style.display='none'">✕</button>
+            </div>
+            <div style="display:flex; gap:10px; margin-bottom:20px; background:rgba(0,0,0,0.03); padding:5px; border-radius:10px;">
+                <button class="btn btn-sm" id="btn-export-daily" onclick="app.setExportType('daily')" style="flex:1;">日报</button>
+                <button class="btn btn-sm btn-secondary" id="btn-export-weekly" onclick="app.setExportType('weekly')" style="flex:1;">周报</button>
+            </div>
+            <textarea id="export-template" class="form-input" style="height:100px; font-family:monospace; font-size:0.85rem;" oninput="app.handleTemplateChange(this.value)"></textarea>
+            <div id="export-preview" style="background:#f5f5f7; padding:12px; border-radius:8px; font-size:0.85rem; white-space:pre-wrap; max-height:150px; overflow-y:auto; border:1px solid #e0e0e0; color:#333;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn" onclick="app.copyReport()">📋 复制内容</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <!-- 4. 侧边栏 (Desktop) -->
+    <nav id="sidebar">
+        <h2 style="color:white; margin-bottom:20px; padding:0 10px;">Glass Todo</h2>
+        <div class="nav-section">视图</div>
+        <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span>📝</span> 任务列表</div>
+        <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span>📅</span> 日历视图</div>
+        <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span>💠</span> 四象限</div>
+        <div class="nav-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><span>🍅</span> 番茄钟</div>
+        
+        <div class="nav-section">标签筛选</div>
+        <div id="tag-filter-list"></div>
+        
+        <div style="flex:1"></div>
+        <div class="nav-item" data-view="stats" onclick="app.switchView('stats')"><span>📊</span> 数据统计</div>
+        <div class="nav-item" data-view="settings" onclick="app.switchView('settings')"><span>⚙️</span> 设置</div>
+        <div class="nav-item" data-view="recycle" onclick="app.switchView('recycle')"><span>🗑️</span> 回收站</div>
+    </nav>
+
+    <!-- 5. 底部 Tab (Mobile) -->
+    <nav id="mobile-tabbar">
+        <div class="tab-item active" data-view="tasks" onclick="app.switchView('tasks')"><div>📝</div><div style="font-size:0.6rem">列表</div></div>
+        <div class="tab-item" data-view="calendar" onclick="app.switchView('calendar')"><div>📅</div><div style="font-size:0.6rem">日历</div></div>
+        <div class="tab-item" data-view="matrix" onclick="app.switchView('matrix')"><div>💠</div><div style="font-size:0.6rem">象限</div></div>
+        <div class="tab-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><div>🍅</div><div style="font-size:0.6rem">番茄</div></div>
+        <div class="tab-item" data-view="stats" onclick="app.switchView('stats')"><div>📊</div><div style="font-size:0.6rem">统计</div></div>
+        <div class="tab-item" data-view="settings" onclick="app.switchView('settings')"><div>⚙️</div><div style="font-size:0.6rem">设置</div></div>
+        <div class="tab-item" data-view="recycle" onclick="app.switchView('recycle')"><div>🗑️</div><div style="font-size:0.6rem">回收站</div></div>
+    </nav>
+
+    <!-- 6. 主区域 -->
+    <main id="main">
+        <div class="toolbar">
+            <div class="search-bar">
+                <span>🔍</span>
+                <input type="text" class="search-input" placeholder="搜索任务..." oninput="app.handleSearch(this.value)">
+            </div>
+            
+            <!-- 日历视图切换器 (仅在 Calendar 视图显示) -->
+            <div id="calendar-controls" class="view-switcher" style="display:none; margin:0 5px;">
+                <button class="view-switch-btn" data-mode="day" onclick="app.setCalendarMode('day')">日</button>
+                <button class="view-switch-btn" data-mode="week" onclick="app.setCalendarMode('week')">周</button>
+                <button class="view-switch-btn" data-mode="month" onclick="app.setCalendarMode('month')">月</button>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center;">
+                <span id="date-display" class="desktop-only" style="font-weight:600; color:#555;">Today</span>
+                <span id="lunar-display" class="desktop-only" style="font-size:0.75rem; color:#888;"></span>
+                <button id="trash-drop" class="btn-icon trash-drop" title="回收站" onclick="app.switchView('recycle')" ondragover="app.handleTrashDragOver(event)" ondragleave="app.handleTrashDragLeave(event)" ondrop="app.dropOnTrash(event)">🗑️</button>
+                <button class="btn btn-sm" onclick="app.openModal()">+ 新建</button>
+            </div>
+        </div>
+
+        <!-- 视图: 搜索 -->
+        <div id="view-search" class="view-container">
+            <h3>🔍 搜索结果</h3>
+            <div id="search-results-list"></div>
+        </div>
+
+        <!-- 视图: 列表 -->
+        <div id="view-tasks" class="view-container active">
+            <div class="task-board">
+                <section class="task-column" id="todo-column">
+                    <div class="task-column-header">
+                        <h4>待办事项</h4>
+                        <span class="task-count" id="todo-count"></span>
+                    </div>
+                    <div id="list-todo" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'todo')"></div>
+                </section>
+                <section class="task-column" id="inbox-column">
+                    <div class="task-column-header">
+                        <h4>待办箱</h4>
+                        <span class="task-count" id="inbox-count"></span>
+                    </div>
+                    <div id="list-inbox-desktop" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'inbox')"></div>
+                </section>
+                <section class="task-column" id="done-column">
+                    <div class="task-column-header">
+                        <h4>已完成</h4>
+                        <span class="task-count" id="done-count"></span>
+                    </div>
+                    <div id="list-done" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'done')"></div>
+                </section>
+            </div>
+            <div class="task-swipe-dots" aria-hidden="true">
+                <span class="task-swipe-dot active"></span>
+                <span class="task-swipe-dot"></span>
+                <span class="task-swipe-dot"></span>
+            </div>
+
+        </div>
+
+        <!-- 视图: 待办箱（无日期任务） -->
+        <!-- 视图: 日历 (增强版) -->
+        <div id="view-calendar" class="view-container">
+            <!-- 修复 Problem 2: 增加 align-items: center 解决错位 -->
+            <div style="text-align:center; margin-bottom:10px; display:flex; justify-content:center; align-items:center; gap:20px;">
+                <button class="btn-text" onclick="app.changeDate(-1)">❮</button>
+                <span id="cal-date-display" style="font-weight:bold; width:120px; text-align:center;">Today</span>
+                <button class="btn-text" onclick="app.changeDate(1)">❯</button>
+            </div>
+            <div class="cal-date-extra">
+                <span id="cal-lunar-display"></span>
+                <span id="cal-holiday-display"></span>
+            </div>
+
+            <!-- 日视图 -->
+            <div id="cal-day-view">
+                <div id="cal-allday-list" style="margin-bottom:10px;"></div>
+                <div class="timeline-wrapper" id="day-timeline" ondragover="event.preventDefault()" ondrop="app.dropOnTimeline(event)">
+                    <div class="time-ruler" id="time-ruler"></div>
+                    <div id="ghost-line" data-time=""></div>
+                </div>
+            </div>
+
+            <!-- 周视图 -->
+            <div id="cal-week-view" style="display:none; height:100%;">
+                <div class="week-header-row" id="week-header-row"></div>
+                <div class="week-timeline" id="week-timeline">
+                    <div class="week-time-ruler" id="week-time-ruler"></div>
+                    <div class="week-days" id="week-days"></div>
+                </div>
+            </div>
+
+            <!-- 月视图 -->
+            <div id="cal-month-view" style="display:none;">
+                <div style="display:grid; grid-template-columns:repeat(7,1fr); text-align:center; margin-bottom:5px;">
+                    <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                </div>
+                <div class="month-grid" id="month-grid"></div>
+            </div>
+        </div>
+
+        <!-- 视图: 四象限 -->
+        <div id="view-matrix" class="view-container">
+            <div class="matrix-grid">
+                <div class="quadrant" id="q1" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q1')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--quad-danger)">🔴 重要紧急 (P1)</div>
+                    <div class="q-list"></div>
+                </div>
+                <div class="quadrant" id="q2" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q2')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--quad-primary)">🔵 重要不急 (P2)</div>
+                    <div class="q-list"></div>
+                </div>
+                <div class="quadrant" id="q3" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q3')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--quad-warning)">🟠 紧急不重 (P3)</div>
+                    <div class="q-list"></div>
+                </div>
+                <div class="quadrant" id="q4" ondragover="event.preventDefault()" ondrop="app.drop(event, 'q4')">
+                    <div style="margin-bottom:10px; font-weight:bold; color:var(--quad-success)">🟢 不重不急 (P4)</div>
+                    <div class="q-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 视图: 统计 -->
+        <div id="view-stats" class="view-container">
+            <div class="stats-card">
+                <h3>📊 效率概览</h3>
+                <div style="font-size:3rem; font-weight:bold; color:var(--primary); text-align:center; margin:20px 0;" id="completion-rate">0%</div>
+                <p style="text-align:center; color:#666;">本周完成率</p>
+            </div>
+        </div>
+
+        <!-- 视图: 番茄钟 -->
+                        <div id="view-pomodoro" class="view-container">
+            <div class="pomodoro-swipe" aria-label="Pomodoro screens">
+                <section class="pomodoro-screen pomodoro-screen-timer">
+                    <div class="stats-card pomodoro-panel">
+                        <div class="pomodoro-mode" id="pomodoro-mode-label" style="display:none;"></div>
+                        <div class="pomodoro-task-title" id="pomodoro-task-title" onclick="app.togglePomodoroTaskPicker()">&#26410;&#36873;&#25321;&#20219;&#21153;</div>
+                        <div class="pomodoro-task-picker" id="pomodoro-task-picker">
+                            <div class="pomodoro-task-list" id="pomodoro-task-list"></div>
+                        </div>
+                        <div class="pomodoro-progress" id="pomodoro-progress">
+                            <svg viewBox="0 0 400 400" aria-hidden="true">
+                                <g class="pomodoro-ticks" id="pomodoro-ticks"></g>
+                                <circle class="pomodoro-ring-bg" cx="200" cy="200" r="150"></circle>
+                                <circle class="pomodoro-ring" id="pomodoro-ring" cx="200" cy="200" r="150"></circle>
+                            </svg>
+                            <button class="pomodoro-action-btn" id="pomodoro-action-btn" type="button" aria-label="&#24320;&#22987;">
+                                <span class="pomodoro-action-icon" id="pomodoro-action-icon"></span>
+                            </button>
+                            <div class="pomodoro-timer work" id="pomodoro-time">
+                                <span id="pomodoro-time-text" onclick="app.openPomodoroSettings()">25:00</span>
+                            </div>
+                        </div>
+                        <div class="pomodoro-cycle" id="pomodoro-cycle-label">&#24050;&#23436;&#25104; 0 &#20010;&#30058;&#33540;</div>
+                        <div class="pomodoro-controls">
+                            <button class="btn btn-secondary" onclick="app.resetPomodoro()">&#37325;&#32622;</button>
+                            <button class="btn btn-secondary" onclick="app.skipPomodoro()">&#36339;&#36807;</button>
+                        </div>
+                    </div>
+                </section>
+                <section class="pomodoro-screen pomodoro-screen-dashboard">
+                    <div class="pomodoro-dashboard">
+                        <div class="pomodoro-stats-split">
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#20170;&#26085;&#30058;&#33540;</div>
+                                <div class="stats-metric-value" id="pomodoro-today-count">0</div>
+                            </div>
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#20170;&#26085;&#19987;&#27880; &#20998;&#38047;</div>
+                                <div class="stats-metric-value" id="pomodoro-today-minutes">0</div>
+                            </div>
+                        </div>
+                        <div class="pomodoro-stats-split">
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#24635;&#30058;&#33540;</div>
+                                <div class="stats-metric-value" id="pomodoro-total-count">0</div>
+                            </div>
+                            <div class="pomodoro-stat-mini">
+                                <div class="stats-metric-title">&#24635;&#19987;&#27880;&#20998;&#38047;</div>
+                                <div class="stats-metric-value" id="pomodoro-total-minutes">0</div>
+                            </div>
+                        </div>
+                        <div class="stats-card pomodoro-history">
+                            <h4>&#26368;&#36817; 7 &#22825;</h4>
+                            <div id="pomodoro-recent-list"></div>
+                        </div>
+                        <div class="stats-card pomodoro-completed">
+                            <h4>&#23436;&#25104;&#21382;&#21490;</h4>
+                            <div id="pomodoro-completed-list"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="pomodoro-swipe-dots" aria-hidden="true">
+                <span class="pomodoro-swipe-dot active"></span>
+                <span class="pomodoro-swipe-dot"></span>
+            </div>
+            <div id="pomodoro-settings-overlay">
+                <div class="modal-box pomodoro-settings">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4>&#26102;&#38388;&#35774;&#32622;</h4>
+                        <button class="btn-text" type="button" onclick="app.closePomodoroSettings()">&#10005;</button>
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#19987;&#27880;(&#20998;&#38047;)</label>
+                        <input type="number" id="pomodoro-work-min" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#30701;&#20241;(&#20998;&#38047;)</label>
+                        <input type="number" id="pomodoro-short-min" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#38271;&#20241;(&#20998;&#38047;)</label>
+                        <input type="number" id="pomodoro-long-min" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="pomodoro-setting-row">
+                        <label>&#38271;&#20241;&#38388;&#38548;</label>
+                        <input type="number" id="pomodoro-long-every" class="form-input pomodoro-setting-input" min="1">
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>&#33258;&#21160;&#24320;&#22987;&#19979;&#19968;&#36718;</span>
+                        <div class="toggle-switch" id="pomodoro-auto-switch"></div>
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>&#33258;&#21160;&#24320;&#22987;&#20241;&#24687;</span>
+                        <div class="toggle-switch" id="pomodoro-auto-break-switch"></div>
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>&#33258;&#21160;&#24320;&#22987;&#19987;&#27880;</span>
+                        <div class="toggle-switch" id="pomodoro-auto-work-switch"></div>
+                    </div>
+                    <div class="settings-toggle pomodoro-toggle">
+                        <span>&#30058;&#33540;&#32467;&#26463;&#21518;&#33258;&#21160;&#23436;&#25104;&#20219;&#21153;</span>
+                        <div class="toggle-switch" id="pomodoro-auto-finish-switch"></div>
+                    </div>
+                    <div class="pomodoro-setting-actions">
+                        <button class="btn btn-sm" id="pomodoro-settings-confirm" type="button">&#30830;&#23450;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+<!-- 视图: 回收站 -->
+        <div id="view-recycle" class="view-container">
+            <h4 style="margin-bottom:10px">回收站（7天自动清理）</h4>
+            <div id="recycle-list"></div>
+        </div>
+
+        <!-- 视图: 设置 -->
+        <div id="view-settings" class="view-container">
+            <div class="settings-layout">
+                <div class="settings-nav">
+                    <div class="settings-nav-title">设置</div>
+                    <a href="#settings-account">账号</a>
+                    <a href="#settings-preferences">偏好设置</a>
+                    <a href="#settings-notifications">通知提醒</a>
+                    <a href="#settings-data">数据管理</a>
+                </div>
+                <div class="settings-content">
+                    <section id="settings-account" class="stats-card settings-section">
+                        <h3>👤 个人中心</h3>
+                        <h4 style="margin-bottom:10px;">账号信息</h4>
+                        <p>当前用户: <span id="current-user" style="font-weight:bold">--</span></p>
+                        <button id="admin-btn" class="btn" style="width:100%; margin-top:10px; display:none; background:#333;" onclick="app.openAdminPanel()">🛡️ 管理员面板</button>
+                        <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                        <h4 style="margin-bottom:10px;">修改密码</h4>
+                        <div class="form-group">
+                            <label class="form-label">原密码</label>
+                            <input type="password" id="pwd-old" class="form-input" placeholder="请输入原密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">新密码</label>
+                            <input type="password" id="pwd-new" class="form-input" placeholder="请输入新密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">确认新密码</label>
+                            <input type="password" id="pwd-confirm" class="form-input" placeholder="请再次输入新密码">
+                        </div>
+                        <button class="btn" style="width:100%; margin-bottom:10px;" onclick="app.changePassword()">修改密码</button>
+                        <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                        <button class="btn btn-danger" style="width:100%;" onclick="app.logout()">退出登录</button>
+                    </section>
+
+                    <section id="settings-preferences" class="stats-card settings-section">
+                        <h3>偏好设置</h3>
+                        <div class="settings-toggle" data-key="calendar">
+                            <span>日历视图</span>
+                            <div class="toggle-switch" id="switch-view-calendar"></div>
+                        </div>
+                        <div class="settings-toggle" data-key="matrix">
+                            <span>四象限</span>
+                            <div class="toggle-switch" id="switch-view-matrix"></div>
+                        </div>
+                        <div class="settings-toggle" data-key="pomodoro">
+                            <span>番茄钟</span>
+                            <div class="toggle-switch" id="switch-view-pomodoro"></div>
+                        </div>
+                        <div class="settings-toggle" data-key="auto-migrate">
+                            <div class="settings-label">
+                                <span>自动迁移过期任务</span>
+                                <span class="help-icon" title="规则：有日期且未完成的任务，超过7天移入待办箱（清空日期/时间，记录移入时间）；超过30天移入回收站。待办箱内任务在移入后超过30天也会进入回收站。">?</span>
+                            </div>
+                            <div class="toggle-switch" id="switch-auto-migrate"></div>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label">默认日历视图</label>
+                            <select id="calendar-default-mode" class="form-input">
+                                <option value="day">日</option>
+                                <option value="week">周</option>
+                                <option value="month">月</option>
+                            </select>
+                        </div>
+                    </section>
+
+                    <section id="settings-notifications" class="stats-card settings-section">
+                        <h3>通知提醒</h3>
+                        <p style="font-size:0.85rem; color:#666; margin-bottom:10px;">开始时间提醒基于 Web Push，需要 HTTPS（localhost 例外）。</p>
+                        <button id="push-toggle-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">开启通知</button>
+                        <button id="push-test-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">发送测试通知</button>
+                    </section>
+
+                    <section id="settings-data" class="stats-card settings-section">
+                        <h3>数据管理</h3>
+                        <p style="font-size:0.85rem; color:#666; line-height:1.6; margin-bottom:12px;">
+                            导出报告：生成工作日志或周志，便于汇报与复盘。<br>
+                            导出 JSON：只包含你填写的任务内容（如标题、日期、标签、子任务），不包含附件文件与系统设置。<br>
+                            全量备份：请停止服务后备份根目录的 `database.sqlite` 与 `storage/` 文件夹，并同时导出 JSON 作为数据清单。
+                        </p>
+                        <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>
+                        <button class="btn btn-secondary" onclick="app.downloadJSON()" style="width:100%; margin-bottom:10px;">💾 备份数据 (JSON)</button>
+                        <label class="btn btn-secondary" style="width:100%; margin-bottom:10px; cursor:pointer; text-align:center;">
+                            📥 导入数据 (JSON)
+                            <input type="file" accept="application/json" style="display:none" onchange="this.files[0] && app.importJSON(this.files[0])">
+                        </label>
+                    </section>
+
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 7. 新建任务 Modal (增强版) -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 id="modal-title">📝 任务详情</h3>
+                <button class="btn-text" onclick="app.closeModal()">✕</button>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">任务名称</label>
+                <input type="text" id="task-title" class="form-input" placeholder="输入任务名称...">
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <div style="flex:2">
+                    <label class="form-label">日期</label>
+                    <input type="date" id="task-date" class="form-input">
+                </div>
+                <div style="flex:1">
+                    <label class="form-label">开始</label>
+                    <input type="time" id="task-start" class="form-input">
+                </div>
+                <div style="flex:1">
+                    <label class="form-label">结束</label>
+                    <input type="time" id="task-end" class="form-input">
+                </div>
+            </div>
+
+            <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+                <input type="checkbox" id="task-remind" style="width:auto; height:auto;">
+                <label for="task-remind" class="form-label" style="margin:0;">开始时间提醒</label>
+                <span class="help-icon" title="需要设置日期和开始时间，关闭应用也可通知。">?</span>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">重复</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <input type="checkbox" id="task-repeat-enabled" style="width:auto; height:auto;" onchange="app.toggleRepeatOptions()">
+                    <span style="font-size:0.85rem; color:#666;">批量创建重复事件</span>
+                </div>
+                <div id="repeat-options" style="display:none; margin-top:10px;">
+                    <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+                        <label class="form-label" style="margin:0;">频率</label>
+                        <select id="repeat-frequency" class="form-input" style="margin:0; flex:1;" onchange="app.updateRepeatOptionVisibility()">
+                            <option value="daily">每天</option>
+                            <option value="weekly">每周</option>
+                            <option value="monthly">每月</option>
+                            <option value="yearly">每年</option>
+                        </select>
+                        <input type="number" id="repeat-count" class="form-input" style="margin:0; width:90px;" min="1" max="365" value="10">
+                    </div>
+                    <div id="repeat-weekly-options" style="display:none; margin-bottom:10px;">
+                        <div style="font-size:0.8rem; color:#666; margin-bottom:6px;">每周星期几</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <label><input type="checkbox" class="repeat-weekday" value="1"> 一</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="2"> 二</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="3"> 三</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="4"> 四</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="5"> 五</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="6"> 六</label>
+                            <label><input type="checkbox" class="repeat-weekday" value="0"> 日</label>
+                        </div>
+                    </div>
+                    <div id="repeat-monthly-options" style="display:none;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <label class="form-label" style="margin:0;">每月第</label>
+                            <input type="number" id="repeat-monthly-day" class="form-input" style="margin:0; width:90px;" min="1" max="31" value="1">
+                            <span style="font-size:0.85rem; color:#666;">天</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">优先级 / 象限</label>
+                <select id="task-quadrant" class="form-input">
+                    <option value="q1">🔴 重要紧急 (P1)</option>
+                    <option value="q2" selected>🔵 重要不急 (P2)</option>
+                    <option value="q3">🟠 紧急不重 (P3)</option>
+                    <option value="q4">🟢 不重不急 (P4)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">标签 (逗号分隔)</label>
+                <input type="text" id="task-tags" class="form-input" placeholder="工作, 会议...">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">子任务</label>
+                <div id="subtask-container" style="margin-bottom:10px;"></div>
+                <div style="color:var(--primary); cursor:pointer; font-size:0.85rem;" onclick="app.addSubtaskInput()">+ 添加子任务</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">附件</label>
+                <div class="attachment-controls">
+                    <label id="task-attachments-btn" class="btn btn-secondary btn-sm attachment-upload">
+                        上传附件
+                        <input type="file" id="task-attachments-input" multiple>
+                    </label>
+                    <span id="task-attachments-hint" class="attachment-hint"></span>
+                </div>
+                <div id="task-attachments-list" class="attachment-list"></div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn btn-danger" style="margin-right:auto;" onclick="app.deleteCurrentTask()">删除</button>
+                <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
+                <button class="btn" onclick="app.saveTask()">保存任务</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
