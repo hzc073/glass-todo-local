@@ -2190,13 +2190,75 @@ class TodoApp {
         const sameList = type === 'checklist'
             ? sameId && Number(this.taskCardMenu.listId) === normalized.listId
             : sameId;
+        const scrollState = this.captureTaskListScroll();
         this.taskCardMenu = sameList ? null : normalized;
         this.render();
+        this.restoreTaskListScroll(scrollState, () => this.deferTaskCardMenuPosition());
+    }
+    captureTaskListScroll() {
+        if (this.view !== 'tasks') return null;
+        const pending = document.getElementById('tasklist-pending');
+        const done = document.getElementById('tasklist-done');
+        const view = document.getElementById('view-tasks');
+        return {
+            panel: this.taskPanel,
+            pending: Number.isFinite(pending?.scrollTop) ? pending.scrollTop : null,
+            done: Number.isFinite(done?.scrollTop) ? done.scrollTop : null,
+            view: Number.isFinite(view?.scrollTop) ? view.scrollTop : null
+        };
+    }
+    restoreTaskListScroll(snapshot, callback) {
+        if (!snapshot || this.view !== 'tasks' || snapshot.panel !== this.taskPanel) {
+            if (callback) callback();
+            return;
+        }
+        requestAnimationFrame(() => {
+            const pending = document.getElementById('tasklist-pending');
+            const done = document.getElementById('tasklist-done');
+            const view = document.getElementById('view-tasks');
+            if (pending && Number.isFinite(snapshot.pending)) pending.scrollTop = snapshot.pending;
+            if (done && Number.isFinite(snapshot.done)) done.scrollTop = snapshot.done;
+            if (view && Number.isFinite(snapshot.view) && view.scrollHeight > view.clientHeight) {
+                view.scrollTop = snapshot.view;
+            }
+            if (callback) callback();
+        });
+    }
+    deferTaskCardMenuPosition() {
+        if (!this.taskCardMenu) return;
+        requestAnimationFrame(() => this.adjustTaskCardMenuPosition());
+    }
+    adjustTaskCardMenuPosition() {
+        if (!this.taskCardMenu) return;
+        const menu = document.querySelector('.task-card.menu-open .task-card-menu');
+        if (!menu) return;
+        const card = menu.closest('.task-card');
+        const button = card?.querySelector('.task-edit-btn');
+        if (!card || !button) return;
+        const scroller = card.closest('.task-section');
+        const scrollerRect = scroller?.getBoundingClientRect();
+        const bounds = scrollerRect || { top: 0, bottom: window.innerHeight };
+
+        menu.style.top = '';
+        menu.style.bottom = '';
+
+        const menuRect = menu.getBoundingClientRect();
+        if (menuRect.bottom <= bounds.bottom - 6) return;
+
+        const cardRect = card.getBoundingClientRect();
+        const buttonRect = button.getBoundingClientRect();
+        const offset = 6;
+        let nextTop = Math.round(buttonRect.top - cardRect.top - menuRect.height - offset);
+        const minTop = Math.round(bounds.top - cardRect.top + 4);
+        if (nextTop < minTop) nextTop = minTop;
+        menu.style.top = `${nextTop}px`;
     }
     closeTaskCardMenu() {
         if (!this.taskCardMenu) return;
+        const scrollState = this.captureTaskListScroll();
         this.taskCardMenu = null;
         this.render();
+        this.restoreTaskListScroll(scrollState);
     }
     async deleteTaskById(id) {
         const t = this.data.find(x => Number(x.id) === Number(id));
@@ -3683,8 +3745,10 @@ class TodoApp {
         if (hadMenu) this.taskCardMenu = null;
         if (this.isSelectionMode) { this.toggleSelection(id); return; }
         if (this.view === 'tasks') {
+            const scrollState = this.captureTaskListScroll();
             this.openTaskDetail(id);
             this.render();
+            this.restoreTaskListScroll(scrollState);
             return;
         }
         this.openModal(id);
