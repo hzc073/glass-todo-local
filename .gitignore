@@ -38,7 +38,7 @@ database.sqlite
 .idea/
 *.swp
 *.swo
-
+public/config.json
 # =========================
 # Logs
 # =========================
